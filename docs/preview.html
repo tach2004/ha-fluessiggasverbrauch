@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lpg-tank-card – Vorschau</title>
+<style>
+  :root{
+    color-scheme: light dark;
+    --card-background-color:#fff;
+    --primary-text-color:#212121;
+    --secondary-text-color:#727272;
+    --secondary-background-color:#f2f4f7;
+    --divider-color:#dfe3e8;
+    --primary-color:#03a9f4;
+    --text-primary-color:#fff;
+  }
+  body.dunkel{
+    --card-background-color:#1c1c1e;
+    --primary-text-color:#e1e1e1;
+    --secondary-text-color:#9b9b9b;
+    --secondary-background-color:#282a2e;
+    --divider-color:#3b3d42;
+    --primary-color:#03a9f4;
+  }
+  body{
+    margin:0; padding:24px; font-family:Roboto,system-ui,sans-serif;
+    background:#f6f7f9; color:var(--primary-text-color);
+  }
+  body.dunkel{ background:#111214; }
+  h1{ font-size:1.2rem; font-weight:600; margin:0 0 4px; }
+  p.sub{ margin:0 0 20px; color:var(--secondary-text-color); font-size:.9rem; }
+  .reihe{ display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start; }
+  .spalte{ width:min(400px,100%); }
+  .spalte h2{ font-size:.85rem; font-weight:500; color:var(--secondary-text-color); margin:0 0 8px; }
+  button.thema{
+    position:fixed; top:16px; right:16px; padding:8px 14px; border-radius:20px; cursor:pointer;
+    border:1px solid var(--divider-color); background:var(--card-background-color);
+    color:var(--primary-text-color); font-family:inherit;
+  }
+</style>
+</head>
+<body>
+<button class="thema" onclick="document.body.classList.toggle('dunkel')">Hell / Dunkel</button>
+<h1>lpg-tank-card</h1>
+<p class="sub">
+  Statische Vorschau mit einem simulierten Home&nbsp;Assistant. Die Karte selbst ist
+  unverändert <code>www/lpg-tank-card.js</code>.
+</p>
+<div class="reihe" id="reihe"></div>
+
+<script>
+/* ---- Minimal-Attrappen der HA-Frontend-Elemente --------------------------- */
+customElements.define("ha-card", class extends HTMLElement {
+  connectedCallback() {
+    // Einzelne Eigenschaften setzen – cssText würde die von der Karte
+    // gesetzten CSS-Variablen wieder löschen.
+    this.style.display = "block";
+    this.style.background = "var(--card-background-color)";
+    this.style.borderRadius = "14px";
+    this.style.boxShadow = "0 2px 6px rgba(0,0,0,.14)";
+  }
+});
+customElements.define("ha-icon", class extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = "display:inline-block;width:24px;height:24px;";
+    this.innerHTML =
+      '<svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="8" ' +
+      'fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+  }
+});
+
+/* ---- Simulierter hass-Zustand -------------------------------------------- */
+const heute = new Date();
+const inTagen = (n) => new Date(heute.getTime() + n * 86400000).toISOString();
+
+/* Monatsprofil wie im Package (Liter je Kalendermonat) */
+const PROFIL = [217, 189, 161, 112, 63, 35, 28, 28, 49, 105, 168, 245];
+
+function monatsVorschau(liter) {
+  const tage = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const out = [];
+  let rest = liter, y = heute.getFullYear(), m = heute.getMonth();
+  let erste = true;
+  for (let i = 0; i < 36 && rest > 0; i++) {
+    const d = tage[m];
+    const anteil = erste ? (d - heute.getDate() + 1) / d : 1;
+    const v = Math.min(PROFIL[m] * anteil, rest);
+    rest = Math.max(0, rest - PROFIL[m] * anteil);
+    out.push({ monat: `${y}-${String(m + 1).padStart(2, "0")}`, liter: +v.toFixed(1), rest: +rest.toFixed(1) });
+    erste = false;
+    m = (m + 1) % 12;
+    if (m === 0) y++;
+  }
+  return out;
+}
+
+function hassMit(liter, tageBisLeer) {
+  const nenn = 4850, maxP = 85, kwhL = 7.0, preis = 0.677;
+  const proTag = liter / Math.max(tageBisLeer, 1);
+  const s = (state, attrs) => ({ state: String(state), attributes: attrs || {} });
+  return {
+    locale: { language: "de" },
+    states: {
+      "sensor.gastank_inhalt": s(liter.toFixed(1)),
+      "sensor.gastank_inhalt_prozent": s((liter / nenn * 100).toFixed(1)),
+      "sensor.gastank_restenergie": s(Math.round(liter * kwhL)),
+      "sensor.gastank_restwert": s((liter * preis).toFixed(2)),
+      "sensor.gastank_reichweite": s(tageBisLeer),
+      "sensor.gastank_prognose": s(tageBisLeer, { monate: monatsVorschau(liter) }),
+      "sensor.gastank_leer_am": s(inTagen(tageBisLeer)),
+      "sensor.gastank_bestellen_bis": s(inTagen(tageBisLeer - 110)),
+      "sensor.gastank_tagesverbrauch": s(proTag.toFixed(2)),
+      "input_datetime.gastank_letzte_betankung": s("2025-08-14"),
+      "input_number.gastank_nennvolumen_liter": s(nenn),
+      "input_number.gastank_max_fuellgrad_prozent": s(maxP),
+      "input_number.gastank_reserve_liter": s(400),
+    },
+    callService: (d, o, data) => alert(`Dienst ${d}.${o}\n` + JSON.stringify(data, null, 2)),
+  };
+}
+
+const faelle = [
+  ["Frisch getankt – 4120 L (85 %)", 4120, 1014],
+  ["Halbvoll – 2200 L (45 %)", 2200, 560],
+  ["Reserve – 380 L (8 %)", 380, 74],
+];
+
+window.addEventListener("load", () => {
+  if (location.hash === "#dunkel") document.body.classList.add("dunkel");
+  const reihe = document.getElementById("reihe");
+  faelle.forEach(([titel, liter, tage]) => {
+    const sp = document.createElement("div");
+    sp.className = "spalte";
+    sp.innerHTML = `<h2>${titel}</h2>`;
+    const karte = document.createElement("lpg-tank-card");
+    karte.setConfig({ type: "custom:lpg-tank-card" });
+    karte.hass = hassMit(liter, tage);
+    sp.appendChild(karte);
+    reihe.appendChild(sp);
+  });
+});
+</script>
+<script src="../www/lpg-tank-card.js"></script>
+</body>
+</html>

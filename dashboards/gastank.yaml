@@ -1,0 +1,181 @@
+################################################################################
+#  Beispiel-Dashboard "Gastank"
+#
+#  Einbinden: Dashboard → Bearbeiten → ⋮ → "Rohkonfigurationseditor"
+#             und den Inhalt ab "views:" übernehmen.
+################################################################################
+views:
+  # ===========================================================================
+  - title: Gastank
+    path: gastank
+    icon: mdi:propane-tank
+    type: sections
+    max_columns: 3
+    sections:
+      # --------------------------------------------------------------- Tank
+      - type: grid
+        cards:
+          - type: custom:lpg-tank-card
+            name: Flüssiggastank
+
+      # ------------------------------------------------------------ Zahlen
+      - type: grid
+        cards:
+          - type: heading
+            heading: Aktuell
+            heading_style: title
+
+          - type: entities
+            entities:
+              - entity: sensor.gastank_inhalt
+                name: Inhalt
+              - entity: sensor.gastank_inhalt_prozent
+                name: Tankuhr
+              - entity: sensor.gastank_inhalt_nutzbar_prozent
+                name: Anteil der Füllung
+              - entity: sensor.gastank_restenergie
+                name: Restenergie
+              - entity: sensor.gastank_restwert
+                name: Warenwert
+              - type: divider
+              - entity: sensor.gastank_tagesverbrauch
+                name: Ø Verbrauch pro Tag
+              - entity: sensor.gasverbrauch_seit_betankung_liter
+                name: Verbrauch seit Betankung
+              - entity: input_datetime.gastank_letzte_betankung
+                name: Letzte Betankung
+
+          - type: heading
+            heading: Prognose
+            heading_style: title
+
+          - type: entities
+            entities:
+              - entity: sensor.gastank_reichweite
+                name: Reichweite
+              - entity: sensor.gastank_leer_am
+                name: Voraussichtlich leer
+              - entity: sensor.gastank_reserve_erreicht_am
+                name: Reserve erreicht
+              - entity: sensor.gastank_bestellen_bis
+                name: Spätestens bestellen
+              - entity: sensor.gastank_jahresverbrauch
+                name: Erwarteter Jahresverbrauch
+
+          - type: gauge
+            entity: sensor.gastank_inhalt_nutzbar_prozent
+            name: Restfüllung
+            min: 0
+            max: 100
+            needle: true
+            severity:
+              green: 30
+              yellow: 15
+              red: 0
+
+      # ------------------------------------------------------- Bedienung
+      - type: grid
+        cards:
+          - type: heading
+            heading: Betankung
+            heading_style: title
+
+          - type: entities
+            entities:
+              - entity: script.gastank_betankung
+                name: Betankung eintragen
+                icon: mdi:gas-station
+              - entity: script.gastank_fuellstand_korrigieren
+                name: Füllstand korrigieren
+                icon: mdi:gauge
+
+          - type: heading
+            heading: Verlauf
+            heading_style: title
+
+          - type: history-graph
+            hours_to_show: 8760
+            entities:
+              - entity: sensor.gastank_inhalt
+                name: Füllstand
+
+          - type: statistics-graph
+            title: Gasverbrauch je Monat
+            chart_type: bar
+            period: month
+            days_to_show: 1095
+            stat_types:
+              - change
+            entities:
+              - sensor.gasverbrauch_heizung_monat
+              - sensor.gasverbrauch_warmwasser_monat
+
+  # ===========================================================================
+  - title: Einstellungen
+    path: gastank-einstellungen
+    icon: mdi:cog
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Tank
+            heading_style: title
+          - type: entities
+            entities:
+              - input_number.gastank_nennvolumen_liter
+              - input_number.gastank_max_fuellgrad_prozent
+              - input_number.gastank_fuellstand_referenz_liter
+              - input_number.gastank_reserve_liter
+
+          - type: heading
+            heading: Umrechnung & Preis
+            heading_style: title
+          - type: entities
+            entities:
+              - input_number.gastank_liter_pro_m3
+              - input_number.gastank_kwh_pro_liter
+              - input_number.gastank_preis_pro_liter
+            footer:
+              type: graph
+              entity: sensor.gastank_restwert
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Prognose
+            heading_style: title
+          - type: entities
+            entities:
+              - input_number.gastank_prognose_jahre
+              - input_number.gastank_prognose_korrektur_prozent
+              - input_number.gastank_lieferzeit_tage
+              - type: divider
+              - input_text.gastank_monatsmittel_liter
+              - input_text.gastank_monatszaehler
+              - entity: script.gastank_monatsprofil_setzen
+                name: Monatsprofil setzen
+
+          - type: markdown
+            title: Monatsprofil
+            content: >-
+              Die zwölf Werte in **Gastank Monatsmittel** sind der erwartete
+              Verbrauch je Kalendermonat in Litern (Januar … Dezember).
+
+
+              {% set mm = states('input_text.gastank_monatsmittel_liter').split(',')
+                 | map('trim') | map('float', 0) | list %} {% if mm | length == 12 %}
+              | Monat | Liter | Anteil |
+              |---|---:|---:|
+              {% for i in range(12) -%}
+              | {{ ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][i] }}
+              | {{ mm[i] | round(0) }} | {{ (mm[i] / (mm | sum) * 100) | round(1) }} % |
+              {% endfor -%}
+              | **Jahr** | **{{ mm | sum | round(0) }}** | |
+              {% endif %}
+
+
+              Am Monatsanfang wird der Vormonat automatisch eingerechnet –
+              gemittelt über
+              {{ states('input_number.gastank_prognose_jahre') | int }} Jahre.

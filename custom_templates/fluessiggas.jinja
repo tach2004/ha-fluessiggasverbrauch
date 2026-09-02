@@ -1,0 +1,113 @@
+{#-
+  ============================================================================
+   Flüssiggastank – gemeinsame Jinja-Makros
+   Ablage:  <config>/custom_templates/fluessiggas.jinja
+   Reload:  Entwicklerwerkzeuge → YAML → "Jinja2-Templates neu laden"
+  ============================================================================
+
+  tank_monatsmittel()  -> JSON-Liste mit 12 Werten (Liter je Kalendermonat)
+  tank_prognose()      -> JSON-Objekt mit Restlaufzeit, Leer-Datum, Bestellfrist
+                          und der Monat-für-Monat-Vorschau
+-#}
+
+{#- Rückfallprofil: 1400 L/a, typische deutsche Heizkurve -#}
+{%- set FG_FALLBACK = [217.0, 189.0, 161.0, 112.0, 63.0, 35.0, 28.0, 28.0, 49.0, 105.0, 168.0, 245.0] -%}
+{%- set FG_TAGE_IM_MONAT = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] -%}
+
+
+{#- ------------------------------------------------------------------------
+    Monatsmittel aus input_text lesen, validieren, sonst Rückfallprofil.
+   ------------------------------------------------------------------------ -#}
+{%- macro tank_monatsmittel() -%}
+  {%- set roh = states('input_text.gastank_monatsmittel_liter') -%}
+  {%- set roh = '' if roh in ['unknown', 'unavailable', 'none', 'None', None] else roh -%}
+  {%- set werte = roh.split(',') | map('trim') | map('float', -1) | list -%}
+  {%- if werte | length == 12 and werte | min >= 0 and werte | sum > 0 -%}
+    {{- werte | to_json -}}
+  {%- else -%}
+    {{- FG_FALLBACK | to_json -}}
+  {%- endif -%}
+{%- endmacro -%}
+
+
+{#- ------------------------------------------------------------------------
+    Vorwärtssimulation Monat für Monat bis der Tank leer ist.
+
+    Idee: Der Jahresverbrauch ist nicht gleichmäßig verteilt – im Januar geht
+    rund zehnmal so viel weg wie im Juli. Statt "Restmenge / Tagesschnitt"
+    wird deshalb mit dem Monatsprofil in die Zukunft gerechnet. Innerhalb
+    eines Monats wird linear interpoliert, damit ein taggenaues Datum
+    herauskommt.
+   ------------------------------------------------------------------------ -#}
+{%- macro tank_prognose() -%}
+  {%- set mm = tank_monatsmittel() | from_json -%}
+  {%- set korr = states('input_number.gastank_prognose_korrektur_prozent') | float(100) / 100 -%}
+  {%- set fuell = states('sensor.gastank_inhalt') | float(-1) -%}
+  {%- set reserve = states('input_number.gastank_reserve_liter') | float(0) -%}
+  {%- set lieferzeit = states('input_number.gastank_lieferzeit_tage') | float(21) -%}
+  {%- set jahr_l = (mm | sum) * korr -%}
+
+  {%- if fuell < 0 or jahr_l <= 0 -%}
+    {{- {'ok': false} | to_json -}}
+  {%- else -%}
+    {%- set heute = now() -%}
+    {%- set ns = namespace(rest=fuell, tage=0.0, leer=none, res=none,
+                           monate=[], y=heute.year, m=heute.month,
+                           erste=true, fertig=false) -%}
+
+    {%- if fuell <= reserve -%}
+      {%- set ns.res = 0.0 -%}
+    {%- endif -%}
+
+    {%- for _ in range(72) -%}
+      {%- if not ns.fertig -%}
+        {%- set schalt = (ns.y % 4 == 0 and ns.y % 100 != 0) or (ns.y % 400 == 0) -%}
+        {%- set dim = 29 if (ns.m == 2 and schalt) else FG_TAGE_IM_MONAT[ns.m - 1] -%}
+        {%- set rate = (mm[ns.m - 1] | float(0) * korr) / dim -%}
+        {%- set seg_tage = (dim - heute.day + 1) if ns.erste else dim -%}
+        {%- set verbrauch = rate * seg_tage -%}
+
+        {%- if ns.res is none and rate > 0 and (ns.rest - verbrauch) <= reserve -%}
+          {%- set ns.res = ns.tage + ([(ns.rest - reserve) / rate, 0] | max) -%}
+        {%- endif -%}
+
+        {%- if ns.monate | length < 36 -%}
+          {%- set ns.monate = ns.monate + [{
+                'monat': '%04d-%02d' | format(ns.y, ns.m),
+                'liter': ([verbrauch, [ns.rest, 0] | max] | min) | round(1),
+                'rest': [ns.rest - verbrauch, 0] | max | round(1) }] -%}
+        {%- endif -%}
+
+        {%- if rate > 0 and (ns.rest - verbrauch) <= 0 -%}
+          {%- set ns.leer = ns.tage + (ns.rest / rate) -%}
+          {%- set ns.fertig = true -%}
+        {%- endif -%}
+
+        {%- set ns.rest = ns.rest - verbrauch -%}
+        {%- set ns.tage = ns.tage + seg_tage -%}
+        {%- set ns.erste = false -%}
+        {%- set ns.m = 1 if ns.m == 12 else ns.m + 1 -%}
+        {%- set ns.y = (ns.y + 1) if ns.m == 1 else ns.y -%}
+      {%- endif -%}
+    {%- endfor -%}
+
+    {%- if fuell <= 0 -%}
+      {%- set ns.leer = 0.0 -%}
+      {%- set ns.res = 0.0 -%}
+    {%- endif -%}
+    {%- set basis = today_at('12:00') -%}
+    {%- set t_leer = (ns.leer | round(0) | int) if ns.leer is not none else none -%}
+    {%- set t_res  = (ns.res  | round(0) | int) if ns.res  is not none else none -%}
+    {%- set t_best = ([t_res - (lieferzeit | round(0) | int), 0] | max) if t_res is not none else none -%}
+    {{- {
+      'ok': true,
+      'tage_bis_leer':     t_leer,
+      'tage_bis_reserve':  t_res,
+      'leer_am':           (basis + timedelta(days=t_leer)).isoformat() if t_leer is not none else none,
+      'reserve_am':        (basis + timedelta(days=t_res)).isoformat()  if t_res  is not none else none,
+      'bestellen_bis':     (basis + timedelta(days=t_best)).isoformat() if t_best is not none else none,
+      'jahresverbrauch':   jahr_l | round(0),
+      'monate':            ns.monate
+    } | to_json -}}
+  {%- endif -%}
+{%- endmacro -%}
