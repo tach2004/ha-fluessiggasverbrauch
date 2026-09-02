@@ -1,0 +1,88 @@
+betankung:
+  target:
+    entity:
+      integration: fluessiggas
+      domain: sensor
+  fields:
+    liter:
+      required: false
+      example: 2500
+      selector:
+        number:
+          min: 0
+          max: 20000
+          step: 1
+          unit_of_measurement: L
+          mode: box
+    fuellstand_vorher_prozent:
+      required: false
+      example: 22
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 0.5
+          unit_of_measurement: "%"
+          mode: box
+    fuellstand_nachher_prozent:
+      required: false
+      example: 80
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 0.5
+          unit_of_measurement: "%"
+          mode: box
+    preis_pro_liter:
+      required: false
+      example: 0.677
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 0.001
+          unit_of_measurement: EUR/L
+          mode: box
+    datum:
+      required: false
+      selector:
+        date:
+    kalibrieren:
+      required: false
+      default: true
+      selector:
+        boolean:
+
+fuellstand_setzen:
+  target:
+    entity:
+      integration: fluessiggas
+      domain: sensor
+  fields:
+    prozent:
+      required: false
+      example: 62
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 0.5
+          unit_of_measurement: "%"
+          mode: box
+    liter:
+      required: false
+      example: 3000
+      selector:
+        number:
+          min: 0
+          max: 20000
+          step: 1
+          unit_of_measurement: L
+          mode: box
+
+profil_neu_berechnen:
+  target:
+    entity:
+      integration: fluessiggas
+      domain: sensor

@@ -1,0 +1,187 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Flüssiggastank",
+        "description": "Der Füllstand wird aus dem Gasverbrauch deiner Heizung fortgeschrieben – ein Sensor am Tank ist nicht nötig.",
+        "data": {
+          "sources": "Gasverbrauchs-Sensoren",
+          "source_unit": "Einheit der Sensoren",
+          "capacity": "Nennvolumen",
+          "max_fill": "Maximaler Füllgrad"
+        },
+        "data_description": {
+          "sources": "Die kumulativen Zähler deiner Heizung, z. B. Heizgas und Warmwassergas. Mehrere Sensoren werden addiert.",
+          "source_unit": "Automatisch übernimmt die Einheit der Sensoren (m³, L oder kWh).",
+          "capacity": "Gesamtvolumen des Tanks laut Typenschild.",
+          "max_fill": "Bei Flüssiggas üblicherweise 85 % – der Rest ist Ausdehnungsraum."
+        }
+      },
+      "details": {
+        "title": "Umrechnung und Prognose",
+        "description": "Die Vorgaben passen für Propan nach DIN 51622. Alles lässt sich später unter „Konfigurieren“ ändern.",
+        "data": {
+          "liter_per_m3": "Liter je m³ Gas",
+          "kwh_per_liter": "Energieinhalt je Liter",
+          "price_per_liter": "Gaspreis je Liter",
+          "reserve": "Reserve",
+          "lead_time": "Vorlaufzeit der Lieferung",
+          "profile_years": "Mittelung über Jahre",
+          "correction": "Korrekturfaktor der Prognose"
+        },
+        "data_description": {
+          "liter_per_m3": "Propan im Normzustand: rund 3,92. Wird bei der ersten Betankung automatisch nachkalibriert, wenn du die Tankuhr davor angibst.",
+          "kwh_per_liter": "Heizwert 6,57 – Brennwert 7,11. 7,0 ist ein guter Mittelwert.",
+          "price_per_liter": "Nur für die Wertanzeige, beeinflusst die Prognose nicht.",
+          "reserve": "Ab dieser Restmenge gilt der Tank als leer – Grundlage für die Bestellfrist.",
+          "lead_time": "Wie lange es vom Bestellen bis zum Tankwagen dauert.",
+          "profile_years": "Über wie viele Jahre der Verbrauch je Kalendermonat gemittelt wird.",
+          "correction": "Skaliert die gesamte Prognose – nützlich nach Dämmung oder Umbau."
+        }
+      }
+    },
+    "error": {
+      "keine_quelle": "Bitte mindestens einen Verbrauchssensor auswählen."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Flüssiggastank",
+        "description": "Änderungen werden sofort übernommen; der Tank wird dabei neu geladen.",
+        "data": {
+          "sources": "Gasverbrauchs-Sensoren",
+          "source_unit": "Einheit der Sensoren",
+          "capacity": "Nennvolumen",
+          "max_fill": "Maximaler Füllgrad",
+          "liter_per_m3": "Liter je m³ Gas",
+          "kwh_per_liter": "Energieinhalt je Liter",
+          "price_per_liter": "Gaspreis je Liter",
+          "reserve": "Reserve",
+          "lead_time": "Vorlaufzeit der Lieferung",
+          "profile_years": "Mittelung über Jahre",
+          "correction": "Korrekturfaktor der Prognose"
+        },
+        "data_description": {
+          "sources": "Die kumulativen Zähler deiner Heizung, z. B. Heizgas und Warmwassergas. Mehrere Sensoren werden addiert.",
+          "source_unit": "Automatisch übernimmt die Einheit der Sensoren (m³, L oder kWh).",
+          "capacity": "Gesamtvolumen des Tanks laut Typenschild.",
+          "max_fill": "Bei Flüssiggas üblicherweise 85 % – der Rest ist Ausdehnungsraum.",
+          "liter_per_m3": "Propan im Normzustand: rund 3,92. Wird bei der ersten Betankung automatisch nachkalibriert, wenn du die Tankuhr davor angibst.",
+          "kwh_per_liter": "Heizwert 6,57 – Brennwert 7,11. 7,0 ist ein guter Mittelwert.",
+          "price_per_liter": "Nur für die Wertanzeige, beeinflusst die Prognose nicht.",
+          "reserve": "Ab dieser Restmenge gilt der Tank als leer – Grundlage für die Bestellfrist.",
+          "lead_time": "Wie lange es vom Bestellen bis zum Tankwagen dauert.",
+          "profile_years": "Über wie viele Jahre der Verbrauch je Kalendermonat gemittelt wird.",
+          "correction": "Skaliert die gesamte Prognose – nützlich nach Dämmung oder Umbau."
+        }
+      }
+    },
+    "error": {
+      "keine_quelle": "Bitte mindestens einen Verbrauchssensor auswählen."
+    }
+  },
+  "selector": {
+    "source_unit": {
+      "options": {
+        "auto": "Automatisch erkennen",
+        "m3": "Kubikmeter (m³)",
+        "liter": "Liter (L)",
+        "kwh": "Kilowattstunden (kWh)"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "inhalt": {
+        "name": "Füllstand"
+      },
+      "inhalt_prozent": {
+        "name": "Tankuhr"
+      },
+      "inhalt_nutzbar": {
+        "name": "Füllung"
+      },
+      "restenergie": {
+        "name": "Restenergie"
+      },
+      "restwert": {
+        "name": "Restwert"
+      },
+      "verbrauch_seit_betankung": {
+        "name": "Verbrauch seit Betankung"
+      },
+      "tagesverbrauch": {
+        "name": "Tagesverbrauch"
+      },
+      "jahresverbrauch": {
+        "name": "Jahresverbrauch"
+      },
+      "reichweite": {
+        "name": "Reichweite"
+      },
+      "leer_am": {
+        "name": "Leer am"
+      },
+      "reserve_am": {
+        "name": "Reserve erreicht am"
+      },
+      "bestellen_bis": {
+        "name": "Bestellen bis"
+      },
+      "letzte_betankung": {
+        "name": "Letzte Betankung"
+      }
+    }
+  },
+  "services": {
+    "betankung": {
+      "name": "Betankung eintragen",
+      "description": "Trägt eine Lieferung ein und startet die Verbrauchszählung neu. Auch Teilbetankungen: der neue Stand ist der Stand davor plus Liefermenge.",
+      "fields": {
+        "liter": {
+          "name": "Liefermenge",
+          "description": "Getankte Liter laut Lieferschein."
+        },
+        "fuellstand_vorher_prozent": {
+          "name": "Tankuhr vor dem Tanken",
+          "description": "Optional. Damit wird die Umrechnung m³ → Liter automatisch an deiner Anlage nachkalibriert."
+        },
+        "fuellstand_nachher_prozent": {
+          "name": "Tankuhr nach dem Tanken",
+          "description": "Optional, hat Vorrang vor der Liefermenge, weil sie direkt gemessen ist."
+        },
+        "preis_pro_liter": {
+          "name": "Preis je Liter",
+          "description": "Optional, wird in der Lieferhistorie festgehalten."
+        },
+        "datum": {
+          "name": "Datum",
+          "description": "Optional. Nachträglich eingetragene Betankungen werden mit dem Verbrauch dieses Tages verrechnet."
+        },
+        "kalibrieren": {
+          "name": "Umrechnung nachkalibrieren",
+          "description": "Nur wirksam, wenn die Tankuhr vor dem Tanken angegeben ist."
+        }
+      }
+    },
+    "fuellstand_setzen": {
+      "name": "Füllstand setzen",
+      "description": "Setzt den Füllstand auf einen abgelesenen Wert und startet die Zählung neu.",
+      "fields": {
+        "prozent": {
+          "name": "Tankuhr",
+          "description": "Abgelesener Prozentwert der mechanischen Anzeige."
+        },
+        "liter": {
+          "name": "Liter",
+          "description": "Alternativ der Füllstand direkt in Litern."
+        }
+      }
+    },
+    "profil_neu_berechnen": {
+      "name": "Monatsprofil neu berechnen",
+      "description": "Liest den Monatsverbrauch der letzten Jahre erneut aus der Langzeitstatistik."
+    }
+  }
+}

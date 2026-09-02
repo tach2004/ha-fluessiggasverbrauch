@@ -2,33 +2,37 @@
  * lpg-tank-card
  * Grafische Füllstandskarte für einen oberirdischen Flüssiggastank.
  *
+ * Gehört zur Integration "fluessiggas" und wird von ihr automatisch
+ * eingebunden – ein Eintrag unter Dashboards → Ressourcen ist nicht nötig.
  * https://github.com/tach2004/ha-fluessiggasverbrauch
  *
- * Besonderheit: Der Tank ist ein liegender Zylinder – die Flüssigkeitshöhe
- * verhält sich also NICHT linear zum Volumen (bei 50 % Volumen steht das Gas
- * genau in der Mitte, bei 85 % aber schon fast am Scheitel). Die Karte rechnet
- * das Volumen deshalb über die Kreissegmentfläche in eine Höhe um.
+ * Ohne Konfiguration findet die Karte ihren Tank selbst: Die Integration
+ * markiert jede Entität mit den Attributen `tank_id` und `kennung`, deshalb
+ * sind weder Entity-IDs noch eine bestimmte Sprache nötig.
+ *
+ *   type: custom:lpg-tank-card          # das genügt bei einem Tank
+ *   tank: 01JABC…                       # tank_id oder Name, bei mehreren Tanks
+ *   entities: { inhalt: sensor.xyz }    # optionale Handkorrektur
+ *
+ * Besonderheit der Grafik: Der Tank ist ein liegender Zylinder – die
+ * Flüssigkeitshöhe verhält sich also NICHT linear zum Volumen (bei 50 %
+ * steht das Gas genau in der Mitte, bei 85 % schon fast am Scheitel).
+ * Die Karte rechnet das Volumen über die Kreissegmentfläche in eine Höhe um.
  */
 
-const LPG_VERSION = "0.1.0";
+const LPG_VERSION = "1.0.0";
+
+/** Kennungen, die die Integration an ihren Entitäten hinterlässt. */
+const KENNUNGEN = [
+  "inhalt", "inhalt_prozent", "inhalt_nutzbar", "restenergie", "restwert",
+  "verbrauch_seit_betankung", "tagesverbrauch", "jahresverbrauch",
+  "reichweite", "leer_am", "reserve_am", "bestellen_bis", "letzte_betankung",
+];
 
 const DEFAULTS = {
-  name: "Flüssiggastank",
-  entity_prozent: "sensor.gastank_inhalt_prozent",
-  entity_liter: "sensor.gastank_inhalt",
-  entity_energie: "sensor.gastank_restenergie",
-  entity_wert: "sensor.gastank_restwert",
-  entity_reichweite: "sensor.gastank_reichweite",
-  entity_leer_am: "sensor.gastank_leer_am",
-  entity_bestellen_bis: "sensor.gastank_bestellen_bis",
-  entity_tagesverbrauch: "sensor.gastank_tagesverbrauch",
-  entity_prognose: "sensor.gastank_prognose",
-  entity_letzte_betankung: "input_datetime.gastank_letzte_betankung",
-  entity_nennvolumen: "input_number.gastank_nennvolumen_liter",
-  entity_max_prozent: "input_number.gastank_max_fuellgrad_prozent",
-  entity_reserve: "input_number.gastank_reserve_liter",
-  script_betankung: "script.gastank_betankung",
-  script_korrektur: "script.gastank_fuellstand_korrigieren",
+  name: null,         // null = Name des Tanks aus Home Assistant
+  tank: null,         // tank_id oder Namensteil, nur bei mehreren Tanks nötig
+  entities: {},       // manuelle Zuordnung, z. B. { inhalt: "sensor.xyz" }
   warn_prozent: 25,   // % der nutzbaren Füllung -> gelb
   alarm_prozent: 12,  // % der nutzbaren Füllung -> rot
   betankung: true,    // Betankungsformular anbieten
@@ -66,10 +70,9 @@ function istWert(s) {
   return s && !NICHTS.includes(s.state);
 }
 
-function zahl(hass, entity, fallback = null) {
-  const s = hass && hass.states[entity];
-  if (!istWert(s)) return fallback;
-  const v = parseFloat(s.state);
+function zahl(zustand, fallback = null) {
+  if (!istWert(zustand)) return fallback;
+  const v = parseFloat(zustand.state);
   return isNaN(v) ? fallback : v;
 }
 
@@ -84,8 +87,32 @@ class LpgTankCard extends HTMLElement {
     this._config = Object.assign({}, DEFAULTS, config || {});
     this._formOffen = false;
     this._modus = "liefermenge";
-    if (this.shadowRoot) this._root = null;
-    this.innerHTML = "";
+    this._signaturAlt = null;
+  }
+
+  /**
+   * Sucht die Entitäten des Tanks anhand der Attribute, die die Integration
+   * setzt. Gibt zusätzlich zurück, welche Tanks überhaupt gefunden wurden,
+   * damit die Karte bei mehreren Tanks um eine Angabe bitten kann.
+   */
+  _finden() {
+    const treffer = {};
+    const tanks = new Set();
+    const wunsch = this._config.tank;
+    for (const [id, zustand] of Object.entries(this._hass.states)) {
+      const a = zustand.attributes || {};
+      if (!a.tank_id || !a.kennung) continue;
+      tanks.add(a.tank_id);
+      if (wunsch && a.tank_id !== wunsch && !id.includes(wunsch) &&
+          !(a.friendly_name || "").includes(wunsch)) continue;
+      if (!treffer[a.kennung]) treffer[a.kennung] = id;
+    }
+    return { treffer: Object.assign(treffer, this._config.entities || {}), tanks };
+  }
+
+  _zustand(kennung) {
+    const id = this._ent && this._ent[kennung];
+    return id ? this._hass.states[id] : undefined;
   }
 
   getCardSize() {
@@ -95,22 +122,21 @@ class LpgTankCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._root) this._aufbauen();
+    const { treffer, tanks } = this._finden();
+    this._ent = treffer;
+    this._tanks = tanks;
     const sig = this._signatur();
     if (sig === this._signaturAlt) return;
     this._signaturAlt = sig;
     this._aktualisieren();
   }
 
-  /** Fingerabdruck aller genutzten Zustände – spart Neuzeichnen bei fremden Events. */
+  /** Fingerabdruck der genutzten Zustände – spart Neuzeichnen bei fremden Events. */
   _signatur() {
-    const c = this._config;
-    return Object.keys(c)
-      .filter((k) => k.startsWith("entity_"))
-      .map((k) => {
-        const s = this._hass.states[c[k]];
-        return s ? s.state : "-";
-      })
-      .join("|") + "|" + ((this._hass.states[c.entity_prognose] || {}).last_updated || "");
+    return KENNUNGEN.map((k) => {
+      const z = this._zustand(k);
+      return z ? `${z.state}@${z.last_updated}` : "-";
+    }).join("|");
   }
 
   /* ------------------------------------------------------------- Aufbau */
@@ -319,6 +345,10 @@ class LpgTankCard extends HTMLElement {
               <label for="f-vorher">Tankuhr direkt vor dem Tanken (%, optional)</label>
               <input id="f-vorher" type="number" min="0" max="100" step="0.5" inputmode="decimal" placeholder="z. B. 22">
             </div>
+            <div class="feld" style="margin-top:8px">
+              <label for="f-preis">Preis je Liter (EUR, optional)</label>
+              <input id="f-preis" type="number" min="0" step="0.001" inputmode="decimal" placeholder="z. B. 0,677">
+            </div>
             <div class="hinweis">
               Wenn du den Wert vor der Betankung angibst, kalibriert sich die Umrechnung
               m³ → Liter automatisch an der Realität.
@@ -355,7 +385,7 @@ class LpgTankCard extends HTMLElement {
      "marke-max", "marke-max-text", "marke-reserve", "marke-reserve-text",
      "kacheln", "fuss", "formular", "knopf-form",
      "m-liefermenge", "m-tankuhr", "block-liefermenge", "block-tankuhr",
-     "f-liter", "f-vorher", "f-prozent", "f-datum", "f-abbrechen", "f-speichern"]
+     "f-liter", "f-vorher", "f-preis", "f-prozent", "f-datum", "f-abbrechen", "f-speichern"]
       .forEach((id) => {
         this._el[id] = root.getElementById ? root.getElementById(id) : root.querySelector("#" + id);
       });
@@ -408,33 +438,30 @@ class LpgTankCard extends HTMLElement {
 
   /* ------------------------------------------------------------ Aktionen */
 
-  _dienst(entityId) {
-    const [domain, obj] = entityId.split(".");
-    return { domain, obj };
-  }
-
   _speichern() {
     const e = this._el;
-    const c = this._config;
+    const ziel = this._ent.inhalt;
+    if (!ziel) return;
+
     if (this._modus === "tankuhr") {
       const p = parseFloat(e["f-prozent"].value);
       if (isNaN(p)) return this._blinken(e["f-prozent"]);
-      const s = this._dienst(c.script_korrektur);
-      this._hass.callService(s.domain, s.obj, { fuellstand_prozent: p });
+      this._hass.callService("fluessiggas", "fuellstand_setzen",
+        { prozent: p }, { entity_id: ziel });
     } else {
       const liter = parseFloat(e["f-liter"].value);
       const vorher = parseFloat(e["f-vorher"].value);
+      const preis = parseFloat(e["f-preis"].value);
       if (isNaN(liter) && isNaN(vorher)) return this._blinken(e["f-liter"]);
-      const data = {};
-      if (!isNaN(liter)) data.getankte_liter = liter;
-      if (!isNaN(vorher)) data.fuellstand_vorher_prozent = vorher;
-      if (e["f-datum"].value) data.datum = e["f-datum"].value;
-      const s = this._dienst(c.script_betankung);
-      this._hass.callService(s.domain, s.obj, data);
+      const daten = {};
+      if (!isNaN(liter)) daten.liter = liter;
+      if (!isNaN(vorher)) daten.fuellstand_vorher_prozent = vorher;
+      if (!isNaN(preis)) daten.preis_pro_liter = preis;
+      if (e["f-datum"].value) daten.datum = e["f-datum"].value;
+      this._hass.callService("fluessiggas", "betankung", daten, { entity_id: ziel });
     }
-    e["f-liter"].value = "";
-    e["f-vorher"].value = "";
-    e["f-prozent"].value = "";
+
+    ["f-liter", "f-vorher", "f-preis", "f-prozent"].forEach((k) => { e[k].value = ""; });
     e["knopf-form"].click();
   }
 
@@ -461,10 +488,10 @@ class LpgTankCard extends HTMLElement {
     return einheit ? `${s} ${einheit}` : s;
   }
 
-  _datum(entityId) {
-    const s = this._hass.states[entityId];
-    if (!istWert(s)) return null;
-    return this._parse(s.state);
+  _datum(kennung) {
+    const z = this._zustand(kennung);
+    if (!istWert(z)) return null;
+    return this._parse(z.state);
   }
 
   /** "2026-09-02" ohne Uhrzeit wuerde als UTC-Mitternacht gelesen und in
@@ -483,50 +510,66 @@ class LpgTankCard extends HTMLElement {
 
   _aktualisieren() {
     const c = this._config;
-    const h = this._hass;
     const e = this._el;
-    if (!h || !e) return;
+    if (!this._hass || !e) return;
 
-    e.titel.textContent = c.name;
+    const inhalt = this._zustand("inhalt");
 
-    // Pflichtentität prüfen
-    const fehlend = [c.entity_liter, c.entity_prozent].filter((id) => !h.states[id]);
-    if (fehlend.length) {
+    // ---------------------------------------------------------- Hinweise
+    if (!inhalt) {
       e.fehler.hidden = false;
-      e.fehler.innerHTML =
-        "Entität nicht gefunden: " + fehlend.map((f) => `<code>${f}</code>`).join(", ") +
-        "<br>Package eingebunden und Home Assistant neu gestartet?";
+      e.fehler.innerHTML = this._tanks.size
+        ? `Kein Tank gefunden, der zu <code>tank: ${c.tank}</code> passt. ` +
+          `Vorhanden: ${[...this._tanks].map((t) => `<code>${t}</code>`).join(", ")}`
+        : "Keine Flüssiggastank-Integration gefunden. Ist sie unter " +
+          "<b>Einstellungen → Geräte &amp; Dienste</b> eingerichtet?";
       e.grafik.style.opacity = ".35";
+      e.kacheln.innerHTML = "";
+      e.fuss.textContent = "";
+      e.verlauf.hidden = true;
+      e["t-prozent"].textContent = "–";
+      e["t-liter"].textContent = "";
       return;
     }
-    e.fehler.hidden = true;
+    if (this._tanks.size > 1 && !c.tank) {
+      e.fehler.hidden = false;
+      e.fehler.innerHTML =
+        "Mehrere Tanks eingerichtet – bitte in der Karte <code>tank: &lt;Name&gt;</code> angeben. " +
+        `Angezeigt wird ${inhalt.attributes.friendly_name || this._ent.inhalt}.`;
+    } else {
+      e.fehler.hidden = true;
+    }
     e.grafik.style.opacity = "1";
 
-    const liter = zahl(h, c.entity_liter, 0);
-    const nenn = zahl(h, c.entity_nennvolumen, 4850);
-    const maxP = zahl(h, c.entity_max_prozent, 85);
-    const reserve = zahl(h, c.entity_reserve, 0);
-    const prozent = zahl(h, c.entity_prozent, (liter / Math.max(nenn, 1)) * 100);
-    const nutzbar = nenn * (maxP / 100);
-    const nutzProzent = (liter / Math.max(nutzbar, 1)) * 100;
+    const a = inhalt.attributes || {};
+    e.titel.textContent =
+      c.name || (a.friendly_name || "Flüssiggastank").replace(/\s+\S+$/, "") || "Flüssiggastank";
 
-    // Farbe nach Restfüllung
+    // ---------------------------------------------------------- Werte
+    const liter = zahl(inhalt, 0);
+    const nenn = a.nennvolumen || 4850;
+    const nutzbar = a.nutzbares_volumen || nenn * 0.85;
+    const reserve = a.reserve || 0;
+    const prozent = zahl(this._zustand("inhalt_prozent"), (liter / Math.max(nenn, 1)) * 100);
+    const nutzProzent = zahl(this._zustand("inhalt_nutzbar"), (liter / Math.max(nutzbar, 1)) * 100);
+
     const farbe =
       nutzProzent <= c.alarm_prozent ? "var(--lpg-alarm)"
       : nutzProzent <= c.warn_prozent ? "var(--lpg-warn)"
       : "var(--lpg-gut)";
     this.style.setProperty("--lpg-farbe", farbe);
 
-    // Geometrie: Tankinnenraum y = 48 (oben) .. 168 (unten)
+    // ---------------------------------------------------------- Tankgrafik
     const yOben = 48, yUnten = 168, hoehe = yUnten - yOben;
     const yFuer = (anteil) => yUnten - fuellhoehe(Math.max(0, Math.min(1, anteil))) * hoehe;
 
     e.liquid.setAttribute("transform", `translate(0,${yFuer(prozent / 100).toFixed(2)})`);
 
-    const yMax = yFuer(maxP / 100);
+    const maxProzent = (nutzbar / Math.max(nenn, 1)) * 100;
+    const yMax = yFuer(maxProzent / 100);
     e["marke-max"].setAttribute("y1", yMax); e["marke-max"].setAttribute("y2", yMax);
     e["marke-max-text"].setAttribute("y", yMax);
-    e["marke-max-text"].textContent = `${this._fmt(maxP, 0)} %`;
+    e["marke-max-text"].textContent = `${this._fmt(maxProzent, 0)} %`;
 
     const zeigeReserve = reserve > 0 && reserve < nutzbar;
     const yRes = yFuer(reserve / Math.max(nenn, 1));
@@ -538,32 +581,32 @@ class LpgTankCard extends HTMLElement {
       e["marke-reserve-text"].setAttribute("y", yRes);
     }
 
+    const energie = zahl(this._zustand("restenergie"), null);
     e["t-prozent"].textContent = `${this._fmt(prozent, 1)} %`;
     e["t-liter"].textContent =
       `${this._fmt(liter, 0)} von ${this._fmt(nutzbar, 0)} L` +
-      (zahl(h, c.entity_energie, null) !== null
-        ? ` · ${this._fmt(zahl(h, c.entity_energie), 0)} kWh` : "");
+      (energie !== null ? ` · ${this._fmt(energie, 0)} kWh` : "");
 
     this._verlaufZeichnen(reserve, nenn);
 
-    // ------------------------------------------------------------ Kacheln
-    const leerAm = this._datum(c.entity_leer_am);
-    const bestellen = this._datum(c.entity_bestellen_bis);
-    const reichweite = zahl(h, c.entity_reichweite, null);
-    const energie = zahl(h, c.entity_energie, null);
-    const wert = zahl(h, c.entity_wert, null);
-    const proTag = zahl(h, c.entity_tagesverbrauch, null);
+    // ---------------------------------------------------------- Kacheln
+    const leerAm = this._datum("leer_am");
+    const bestellen = this._datum("bestellen_bis");
+    const reichweite = zahl(this._zustand("reichweite"), null);
+    const wert = zahl(this._zustand("restwert"), null);
+    const proTag = zahl(this._zustand("tagesverbrauch"), null);
 
     const kacheln = [
       { label: "Restenergie", wert: this._fmt(energie, 0, "kWh"),
-        zusatz: wert !== null ? this._fmt(wert, 0, "EUR") : "", entity: c.entity_energie },
+        zusatz: wert !== null ? this._fmt(wert, 0, "EUR") : "", kennung: "restenergie" },
       { label: "Ø Verbrauch", wert: this._fmt(proTag, 1, "L/d"),
-        zusatz: proTag !== null ? this._fmt(proTag * 30, 0, "L/Monat") : "", entity: c.entity_tagesverbrauch },
+        zusatz: proTag !== null ? this._fmt(proTag * 30, 0, "L/Monat") : "",
+        kennung: "tagesverbrauch" },
       { label: "Reichweite", wert: reichweite !== null ? this._fmt(reichweite, 0, "Tage") : "–",
         zusatz: reichweite !== null ? `≈ ${this._fmt(reichweite / 30.44, 1)} Monate` : "",
-        entity: c.entity_reichweite },
+        kennung: "reichweite" },
       { label: "Voraussichtlich leer", wert: this._datumText(leerAm),
-        zusatz: leerAm ? this._wochentag(leerAm) : "", entity: c.entity_leer_am },
+        zusatz: leerAm ? this._wochentag(leerAm) : "", kennung: "leer_am" },
     ];
 
     e.kacheln.innerHTML = kacheln.map((k, i) => `
@@ -573,13 +616,18 @@ class LpgTankCard extends HTMLElement {
         <span class="k-zusatz">${k.zusatz || "&nbsp;"}</span>
       </button>`).join("");
     e.kacheln.querySelectorAll(".kachel").forEach((el) => {
-      el.addEventListener("click", () => this._mehrInfo(kacheln[parseInt(el.dataset.i, 10)].entity));
+      const kennung = kacheln[parseInt(el.dataset.i, 10)].kennung;
+      el.addEventListener("click", () => this._mehrInfo(this._ent[kennung]));
     });
 
-    // -------------------------------------------------------------- Fuß
-    const letzte = h.states[c.entity_letzte_betankung];
-    const letzteText = istWert(letzte) ? this._datumText(this._parse(letzte.state)) : "–";
-    const teile = [`Letzte Betankung: ${letzteText}`];
+    // ---------------------------------------------------------- Fußzeile
+    const letzte = this._zustand("letzte_betankung");
+    const teile = [];
+    if (istWert(letzte)) {
+      const menge = letzte.attributes && letzte.attributes.liter;
+      teile.push(`Letzte Betankung: ${this._datumText(this._parse(letzte.state))}` +
+        (menge ? ` (${this._fmt(menge, 0, "L")})` : ""));
+    }
     if (bestellen) {
       const tage = Math.round((bestellen - new Date()) / 86400000);
       teile.push(tage <= 0
@@ -588,6 +636,7 @@ class LpgTankCard extends HTMLElement {
     }
     e.fuss.textContent = teile.join(" · ");
   }
+
 
   /**
    * Restverlauf der kommenden Monate aus dem Attribut "monate" der
@@ -598,7 +647,7 @@ class LpgTankCard extends HTMLElement {
     const svg = this._el.verlauf;
     if (!svg) return;
     const c = this._config;
-    const prog = this._hass.states[c.entity_prognose];
+    const prog = this._zustand("reichweite");
     const monate = (prog && prog.attributes && prog.attributes.monate) || [];
     if (!c.verlauf || monate.length < 2) { svg.hidden = true; return; }
     svg.hidden = false;

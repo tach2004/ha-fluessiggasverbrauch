@@ -45,7 +45,7 @@
 <h1>lpg-tank-card</h1>
 <p class="sub">
   Statische Vorschau mit einem simulierten Home&nbsp;Assistant. Die Karte selbst ist
-  unverändert <code>www/lpg-tank-card.js</code>.
+  unverändert <code>custom_components/fluessiggas/frontend/lpg-tank-card.js</code>.
 </p>
 <div class="reihe" id="reihe"></div>
 
@@ -95,28 +95,38 @@ function monatsVorschau(liter) {
   return out;
 }
 
-function hassMit(liter, tageBisLeer) {
+function hassMit(tankId, liter, tageBisLeer) {
   const nenn = 4850, maxP = 85, kwhL = 7.0, preis = 0.677;
+  const nutzbar = nenn * maxP / 100;
   const proTag = liter / Math.max(tageBisLeer, 1);
-  const s = (state, attrs) => ({ state: String(state), attributes: attrs || {} });
+  const monate = monatsVorschau(liter);
+
+  // Die Integration markiert jede Entität mit tank_id und kennung –
+  // genau daran findet die Karte ihre Werte wieder.
+  const e = (kennung, state, extra) => [
+    `sensor.tank_${tankId}_${kennung}`,
+    { state: String(state), attributes: { tank_id: tankId, kennung, ...(extra || {}) } },
+  ];
+
   return {
     locale: { language: "de" },
-    states: {
-      "sensor.gastank_inhalt": s(liter.toFixed(1)),
-      "sensor.gastank_inhalt_prozent": s((liter / nenn * 100).toFixed(1)),
-      "sensor.gastank_restenergie": s(Math.round(liter * kwhL)),
-      "sensor.gastank_restwert": s((liter * preis).toFixed(2)),
-      "sensor.gastank_reichweite": s(tageBisLeer),
-      "sensor.gastank_prognose": s(tageBisLeer, { monate: monatsVorschau(liter) }),
-      "sensor.gastank_leer_am": s(inTagen(tageBisLeer)),
-      "sensor.gastank_bestellen_bis": s(inTagen(tageBisLeer - 110)),
-      "sensor.gastank_tagesverbrauch": s(proTag.toFixed(2)),
-      "input_datetime.gastank_letzte_betankung": s("2025-08-14"),
-      "input_number.gastank_nennvolumen_liter": s(nenn),
-      "input_number.gastank_max_fuellgrad_prozent": s(maxP),
-      "input_number.gastank_reserve_liter": s(400),
-    },
-    callService: (d, o, data) => alert(`Dienst ${d}.${o}\n` + JSON.stringify(data, null, 2)),
+    states: Object.fromEntries([
+      e("inhalt", liter.toFixed(1), {
+        friendly_name: "Flüssiggastank Füllstand",
+        nennvolumen: nenn, nutzbares_volumen: nutzbar, reserve: 400,
+      }),
+      e("inhalt_prozent", (liter / nenn * 100).toFixed(1)),
+      e("inhalt_nutzbar", (liter / nutzbar * 100).toFixed(1)),
+      e("restenergie", Math.round(liter * kwhL)),
+      e("restwert", (liter * preis).toFixed(2)),
+      e("tagesverbrauch", proTag.toFixed(2)),
+      e("reichweite", tageBisLeer, { monate }),
+      e("leer_am", inTagen(tageBisLeer)),
+      e("bestellen_bis", inTagen(tageBisLeer - 110)),
+      e("letzte_betankung", "2025-08-14", { liter: 2450, kosten: 1659 }),
+    ]),
+    callService: (d, o, daten, ziel) =>
+      alert(`Dienst ${d}.${o}\nZiel: ${JSON.stringify(ziel)}\n` + JSON.stringify(daten, null, 2)),
   };
 }
 
@@ -135,12 +145,12 @@ window.addEventListener("load", () => {
     sp.innerHTML = `<h2>${titel}</h2>`;
     const karte = document.createElement("lpg-tank-card");
     karte.setConfig({ type: "custom:lpg-tank-card" });
-    karte.hass = hassMit(liter, tage);
+    karte.hass = hassMit(titel.split(" ")[0].toLowerCase(), liter, tage);
     sp.appendChild(karte);
     reihe.appendChild(sp);
   });
 });
 </script>
-<script src="../www/lpg-tank-card.js"></script>
+<script src="../custom_components/fluessiggas/frontend/lpg-tank-card.js"></script>
 </body>
 </html>

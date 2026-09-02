@@ -1,0 +1,187 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LPG tank",
+        "description": "The level is derived from your heating system's gas consumption – no sensor on the tank required.",
+        "data": {
+          "sources": "Gas consumption sensors",
+          "source_unit": "Unit of the sensors",
+          "capacity": "Nominal volume",
+          "max_fill": "Maximum fill level"
+        },
+        "data_description": {
+          "sources": "The cumulative counters of your heating system, e.g. heating gas and domestic hot water gas. Multiple sensors are added up.",
+          "source_unit": "Automatic takes the unit from the sensors (m³, L or kWh).",
+          "capacity": "Total volume of the tank as stated on the type plate.",
+          "max_fill": "Usually 85 % for LPG – the rest is expansion space."
+        }
+      },
+      "details": {
+        "title": "Conversion and forecast",
+        "description": "The defaults suit propane according to DIN 51622. Everything can be changed later under “Configure”.",
+        "data": {
+          "liter_per_m3": "Litres per m³ of gas",
+          "kwh_per_liter": "Energy content per litre",
+          "price_per_liter": "Gas price per litre",
+          "reserve": "Reserve",
+          "lead_time": "Delivery lead time",
+          "profile_years": "Averaging over years",
+          "correction": "Forecast correction factor"
+        },
+        "data_description": {
+          "liter_per_m3": "Propane at standard conditions: about 3.92. Calibrated automatically on the first refill if you enter the gauge reading beforehand.",
+          "kwh_per_liter": "Net calorific value 6.57 – gross 7.11. 7.0 is a good middle ground.",
+          "price_per_liter": "Only for the value display, does not affect the forecast.",
+          "reserve": "Below this amount the tank counts as empty – basis for the ordering deadline.",
+          "lead_time": "How long it takes from ordering to the tanker arriving.",
+          "profile_years": "Over how many years the consumption per calendar month is averaged.",
+          "correction": "Scales the entire forecast – useful after insulation work or a rebuild."
+        }
+      }
+    },
+    "error": {
+      "keine_quelle": "Please select at least one consumption sensor."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "LPG tank",
+        "description": "Changes take effect immediately; the tank is reloaded.",
+        "data": {
+          "sources": "Gas consumption sensors",
+          "source_unit": "Unit of the sensors",
+          "capacity": "Nominal volume",
+          "max_fill": "Maximum fill level",
+          "liter_per_m3": "Litres per m³ of gas",
+          "kwh_per_liter": "Energy content per litre",
+          "price_per_liter": "Gas price per litre",
+          "reserve": "Reserve",
+          "lead_time": "Delivery lead time",
+          "profile_years": "Averaging over years",
+          "correction": "Forecast correction factor"
+        },
+        "data_description": {
+          "sources": "The cumulative counters of your heating system, e.g. heating gas and domestic hot water gas. Multiple sensors are added up.",
+          "source_unit": "Automatic takes the unit from the sensors (m³, L or kWh).",
+          "capacity": "Total volume of the tank as stated on the type plate.",
+          "max_fill": "Usually 85 % for LPG – the rest is expansion space.",
+          "liter_per_m3": "Propane at standard conditions: about 3.92. Calibrated automatically on the first refill if you enter the gauge reading beforehand.",
+          "kwh_per_liter": "Net calorific value 6.57 – gross 7.11. 7.0 is a good middle ground.",
+          "price_per_liter": "Only for the value display, does not affect the forecast.",
+          "reserve": "Below this amount the tank counts as empty – basis for the ordering deadline.",
+          "lead_time": "How long it takes from ordering to the tanker arriving.",
+          "profile_years": "Over how many years the consumption per calendar month is averaged.",
+          "correction": "Scales the entire forecast – useful after insulation work or a rebuild."
+        }
+      }
+    },
+    "error": {
+      "keine_quelle": "Please select at least one consumption sensor."
+    }
+  },
+  "selector": {
+    "source_unit": {
+      "options": {
+        "auto": "Detect automatically",
+        "m3": "Cubic metres (m³)",
+        "liter": "Litres (L)",
+        "kwh": "Kilowatt hours (kWh)"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "inhalt": {
+        "name": "Level"
+      },
+      "inhalt_prozent": {
+        "name": "Gauge"
+      },
+      "inhalt_nutzbar": {
+        "name": "Fill"
+      },
+      "restenergie": {
+        "name": "Remaining energy"
+      },
+      "restwert": {
+        "name": "Remaining value"
+      },
+      "verbrauch_seit_betankung": {
+        "name": "Consumption since refill"
+      },
+      "tagesverbrauch": {
+        "name": "Daily consumption"
+      },
+      "jahresverbrauch": {
+        "name": "Annual consumption"
+      },
+      "reichweite": {
+        "name": "Range"
+      },
+      "leer_am": {
+        "name": "Empty on"
+      },
+      "reserve_am": {
+        "name": "Reserve reached on"
+      },
+      "bestellen_bis": {
+        "name": "Order by"
+      },
+      "letzte_betankung": {
+        "name": "Last refill"
+      }
+    }
+  },
+  "services": {
+    "betankung": {
+      "name": "Register refill",
+      "description": "Registers a delivery and restarts consumption counting. Partial refills included: the new level is the previous level plus the delivered amount.",
+      "fields": {
+        "liter": {
+          "name": "Delivered amount",
+          "description": "Litres delivered according to the delivery note."
+        },
+        "fuellstand_vorher_prozent": {
+          "name": "Gauge before refilling",
+          "description": "Optional. Used to recalibrate the m³ to litres conversion for your installation."
+        },
+        "fuellstand_nachher_prozent": {
+          "name": "Gauge after refilling",
+          "description": "Optional, takes precedence over the delivered amount because it is measured directly."
+        },
+        "preis_pro_liter": {
+          "name": "Price per litre",
+          "description": "Optional, kept in the delivery history."
+        },
+        "datum": {
+          "name": "Date",
+          "description": "Optional. Refills entered later are offset against the consumption recorded on that day."
+        },
+        "kalibrieren": {
+          "name": "Recalibrate conversion",
+          "description": "Only effective if the gauge before refilling is given."
+        }
+      }
+    },
+    "fuellstand_setzen": {
+      "name": "Set level",
+      "description": "Sets the level to a value you read off and restarts counting.",
+      "fields": {
+        "prozent": {
+          "name": "Gauge",
+          "description": "Percentage read from the mechanical gauge."
+        },
+        "liter": {
+          "name": "Litres",
+          "description": "Alternatively the level directly in litres."
+        }
+      }
+    },
+    "profil_neu_berechnen": {
+      "name": "Recalculate monthly profile",
+      "description": "Re-reads the monthly consumption of recent years from long-term statistics."
+    }
+  }
+}

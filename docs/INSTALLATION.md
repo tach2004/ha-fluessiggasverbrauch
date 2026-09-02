@@ -1,167 +1,129 @@
-# Installation
+# Installation und Einrichtung
 
-## 1. Dateien kopieren
+## 1. Integration installieren
 
-In den Home-Assistant-Konfigurationsordner (dort, wo `configuration.yaml` liegt):
+### HACS
 
-```
-config/
-├── configuration.yaml
-├── packages/
-│   └── fluessiggas.yaml
-├── custom_templates/
-│   └── fluessiggas.jinja
-└── www/
-    └── lpg-tank-card.js
-```
+HACS → ⋮ → **Benutzerdefinierte Repositories**:
 
-Per Terminal-Add-on oder Samba, oder direkt im Ordner klonen:
+| Feld | Wert |
+|---|---|
+| Repository | `https://github.com/tach2004/ha-fluessiggasverbrauch` |
+| Kategorie | Integration |
+
+Dann „Flüssiggastank" herunterladen und Home Assistant neu starten.
+
+### Von Hand
 
 ```bash
 cd /config
 git clone https://github.com/tach2004/ha-fluessiggasverbrauch.git .gastank
-mkdir -p packages custom_templates www
-cp .gastank/packages/fluessiggas.yaml        packages/
-cp .gastank/custom_templates/fluessiggas.jinja custom_templates/
-cp .gastank/www/lpg-tank-card.js             www/
+mkdir -p custom_components
+cp -r .gastank/custom_components/fluessiggas custom_components/
 ```
 
-Für Updates später einfach `git -C /config/.gastank pull` und erneut kopieren.
+Neu starten. Für Updates: `git -C /config/.gastank pull` und erneut kopieren.
 
-## 2. Package aktivieren
+## 2. Tank anlegen
 
-In `configuration.yaml` – falls noch nicht vorhanden:
+**Einstellungen → Geräte & Dienste → Integration hinzufügen → Flüssiggastank**
 
-```yaml
-homeassistant:
-  packages: !include_dir_named packages
-```
+### Schritt 1 – Tank und Quellen
 
-> Hinweis: Wenn `automation:` in der `configuration.yaml` bereits als
-> `automation: !include automations.yaml` eingebunden ist, funktioniert die
-> Zusammenführung mit dem Package problemlos. Nur eine zweite *Liste* direkt in
-> der `configuration.yaml` würde kollidieren.
+| Feld | Hinweis |
+|---|---|
+| **Gasverbrauchs-Sensoren** | Die kumulativen Zähler deiner Heizung. Mehrere werden addiert – bei einer Viessmann typischerweise Heizgas und Warmwassergas. |
+| **Einheit** | „Automatisch erkennen" nimmt die Einheit der Sensoren (m³, L oder kWh). |
+| **Nennvolumen** | Gesamtvolumen laut Typenschild, z. B. 4850 L. |
+| **Maximaler Füllgrad** | Bei Flüssiggas 85 %. |
 
-## 3. Quellsensoren eintragen
-
-In `packages/fluessiggas.yaml` stehen ganz oben vier Zeilen mit
-`# <<< ANPASSEN`. Dort gehören die beiden Gasverbrauchssensoren der Heizung
-hinein (jeweils zweimal – einmal für den Zähler seit der Betankung, einmal für
-den Monatszähler).
-
-Die eigenen IDs findest du unter **Entwicklerwerkzeuge → Zustände**, Filter
-`gas`. Gesucht sind die kumulativen Zähler in m³, also die Entitäten, die auch
-im Energie-Dashboard hinterlegt sind – typischerweise die Variante *„dieses
-Jahr"*:
-
-```
-sensor.<geraet>_heizgasverbrauch_dieses_jahr
-sensor.<geraet>_warmwasser_gasverbrauch_dieses_jahr
-```
+Welche Sensoren die richtigen sind, siehst du unter **Entwicklerwerkzeuge →
+Zustände**, Filter `gas`: gesucht sind die kumulativen Zähler, die auch im
+Energie-Dashboard hinterlegt sind – typischerweise die Variante „dieses Jahr".
 
 Dass diese Sensoren zum Jahreswechsel auf 0 zurückspringen, ist kein Problem:
-Der `utility_meter` erkennt den Rücksprung und zählt normal weiter.
+Die Integration liest die Statistiksumme, in der Home Assistant Rückstellungen
+bereits herausgerechnet hat.
 
-Wer nur *einen* Gassensor hat, trägt bei den Warmwasser-Zählern einfach
-denselben Sensor **nicht** ein, sondern löscht die beiden Warmwasser-Blöcke und
-entfernt sie aus dem Sensor `Gasverbrauch seit Betankung`.
+> Achtung bei Viessmann: „Heizenergieverbrauch" ist der **Strom**verbrauch der
+> Anlage, nicht das Gas. Nimm die Sensoren in m³.
 
-## 4. Neu starten und prüfen
+### Schritt 2 – Umrechnung und Prognose
 
-**Entwicklerwerkzeuge → YAML → Konfiguration prüfen**, danach neu starten.
+| Feld | Vorgabe | Hinweis |
+|---|---|---|
+| Liter je m³ Gas | 3,92 | Propan im Normzustand. Wird bei der ersten Betankung automatisch nachkalibriert. |
+| Energieinhalt je Liter | 7,0 kWh | Heizwert 6,57 – Brennwert 7,11. |
+| Gaspreis je Liter | – | Nur für die Wertanzeige. |
+| Reserve | 400 L | Ab hier gilt der Tank als leer. |
+| Vorlaufzeit | 21 d | Zeit vom Bestellen bis zum Tankwagen. |
+| Mittelung über Jahre | 2 | Über wie viele Jahre je Kalendermonat gemittelt wird. |
+| Korrekturfaktor | 100 % | Skaliert die ganze Prognose, z. B. nach einer Dämmung. |
 
-Nach dem Start sollte es geben:
+Alles später unter **Konfigurieren** änderbar.
 
-* `sensor.gastank_inhalt` (anfangs 0 L – das ist richtig, siehe Schritt 6)
-* `sensor.gasverbrauch_seit_betankung`
-* die Skripte `script.gastank_betankung` und `script.gastank_fuellstand_korrigieren`
+## 3. Füllstand einmalig setzen
 
-Wenn `sensor.gastank_prognose` `unavailable` ist: Die Jinja-Makros wurden nicht
-gefunden. Prüfen, ob `custom_templates/fluessiggas.jinja` existiert, dann
-**Entwicklerwerkzeuge → YAML → Jinja2-Templates neu laden**.
+Direkt nach dem Anlegen steht der Tank auf 0 L – die Integration weiß ja noch
+nicht, was drin ist. Zwei Wege:
 
-## 5. Karte einbinden
+* **In der Karte:** oben rechts aufs Zapfsäulen-Symbol → *Tankuhr ablesen* →
+  Prozentwert eintragen.
+* **Als Dienst:** Entwicklerwerkzeuge → Aktionen →
+  `fluessiggas.fuellstand_setzen`, Ziel = ein Sensor des Tanks, `prozent: 62`.
 
-**Einstellungen → Dashboards → ⋮ (oben rechts) → Ressourcen → Ressource hinzufügen**
+Damit ist der Bezugspunkt gesetzt und die Verbrauchszählung startet bei 0.
 
-| Feld | Wert |
+## 4. Karte ins Dashboard
+
+Die Karte wird von der Integration automatisch ausgeliefert und angemeldet.
+Falls sie im Kartenpicker fehlt: einmal Strg+F5.
+
+```yaml
+type: custom:lpg-tank-card
+```
+
+Ein vollständiges Dashboard mit Verlauf und Monatsprofil liegt in
+[`dashboards/gastank.yaml`](../dashboards/gastank.yaml).
+
+Die Entity-IDs folgen dem Tanknamen: Aus „Flüssiggastank" wird
+`sensor.flussiggastank_fullstand` (Home Assistant macht aus „ü" ein „u").
+Die Karte selbst braucht keine Entity-IDs.
+
+## 5. Betankung eintragen
+
+In der Karte aufs Zapfsäulen-Symbol, oder als Dienst `fluessiggas.betankung`:
+
+| Fall | Eingabe |
 |---|---|
-| URL | `/local/lpg-tank-card.js` |
-| Typ | JavaScript-Modul |
+| Voll getankt, Lieferschein da | `liter: 2500` |
+| Nur 1.000 L getankt | `liter: 1000` – der neue Stand ist alter Stand + 1.000 |
+| Tankuhr abgelesen | `fuellstand_nachher_prozent: 80` |
+| Mit Kalibrierung | zusätzlich `fuellstand_vorher_prozent: 22` |
+| Nachträglich | zusätzlich `datum: 2026-08-14` |
+| Mit Preis | zusätzlich `preis_pro_liter: 0.677` |
 
-Danach den Browser-Cache leeren (Strg+F5). Im Dashboard:
+Die Kalibrierung lohnt sich: Sie vergleicht den abgelesenen Verbrauch mit den
+gezählten m³ und schreibt den echten Faktor zurück. Danach stimmt die Rechnung
+für deine Anlage statt für die Norm.
 
-```yaml
-type: custom:lpg-tank-card
-```
+## 6. Monatsprofil prüfen
 
-Alle Optionen sind vorbelegt; anpassbar sind unter anderem:
-
-```yaml
-type: custom:lpg-tank-card
-name: Flüssiggastank
-warn_prozent: 25      # ab hier gelb (% der nutzbaren Füllung)
-alarm_prozent: 12     # ab hier rot
-verlauf: true         # Restverlauf-Diagramm zeigen
-betankung: true       # Betankungsformular anbieten
-wellen: true          # Wellenanimation
-```
-
-Ein komplettes Dashboard liegt in [`dashboards/gastank.yaml`](../dashboards/gastank.yaml).
-
-## 6. Einmalig einrichten
-
-1. **Tankuhr ablesen.** Skript `Gastank: Füllstand korrigieren` ausführen und
-   den abgelesenen Prozentwert eintragen (oder in der Karte oben rechts auf das
-   Zapfsäulen-Symbol → *Tankuhr ablesen*).
-   Das setzt den Referenzstand und startet die Verbrauchszählung bei 0.
-2. **Preis prüfen:** `input_number.gastank_preis_pro_liter`.
-3. **Monatsprofil befüllen** (optional, aber empfohlen – siehe unten).
-
-## 7. Monatsprofil aus der Historie befüllen
-
-Ohne eigene Daten startet die Prognose mit einem typischen deutschen Heizprofil
-und 1.400 L Jahresverbrauch. Wer schon Statistiken hat, sollte sie nutzen:
-
-```bash
-pip install websockets
-python3 tools/monatsprofil.py \
-  --url http://homeassistant.local:8123 \
-  --token <Langlebiges Zugriffstoken aus Profil → Sicherheit> \
-  --entities sensor.<heizgas_dieses_jahr> sensor.<warmwassergas_dieses_jahr> \
-  --jahre 2 \
-  --schreiben
-```
-
-Das Skript liest die Langzeitstatistik, mittelt je Kalendermonat über die
-gewünschte Anzahl Jahre, rechnet m³ in Liter um und schreibt das Ergebnis in
-`input_text.gastank_monatsmittel_liter`.
-
-Ohne `--schreiben` gibt es die Werte nur aus – die kann man dann per Skript
-`Gastank: Monatsprofil setzen` oder direkt im Helfer eintragen.
-
-Monate ohne Daten bekommen 0 L. Bei Historie ab Juli 2024 fehlt also nichts
-mehr, sobald ein voller Jahreszyklus vorliegt; bis dahin die Lücken von Hand
-mit plausiblen Werten füllen.
-
-## 8. Betankung eintragen
-
-Wenn der Tankwagen da war – in der Karte auf das Zapfsäulen-Symbol:
-
-* **Getankte Menge:** Liter laut Lieferschein.
-  Zusätzlich möglichst den Wert der Tankuhr **vor** dem Tanken eintragen – damit
-  kalibriert sich die Umrechnung m³ → Liter automatisch nach.
-* **Tankuhr ablesen:** einfach den neuen Prozentwert, ohne Liefermenge.
-
-Beides setzt den Referenzstand neu und stellt die Verbrauchszähler auf 0.
+Der Sensor **Jahresverbrauch** trägt die Attribute `monatsprofil` (Liter je
+Monat) und `gemessene_jahre`. Steht dort überall eine 0, gab es noch keine
+Statistik – dann ist die Kurve geschätzt. Mit
+`fluessiggas.profil_neu_berechnen` liest die Integration sofort neu ein;
+sonst passiert das alle sechs Stunden von allein.
 
 ## Fehlersuche
 
 | Symptom | Ursache |
 |---|---|
-| `sensor.gastank_inhalt` bleibt 0 | Schritt 6 noch nicht gemacht |
-| Füllstand sinkt nicht | Quellsensor falsch – prüfen, ob `sensor.gasverbrauch_seit_betankung` steigt |
-| Füllstand sinkt zu schnell/langsam | Faktor `input_number.gastank_liter_pro_m3` – bei der nächsten Betankung kalibrieren lassen |
-| `sensor.gastank_prognose` = `unknown` | Monatsprofil ergibt Jahresverbrauch 0 oder Reichweite > 6 Jahre |
-| Karte zeigt „Entität nicht gefunden" | Package nicht geladen oder Sensoren anders benannt |
-| Karte lädt gar nicht | Ressource fehlt oder Browser-Cache – Strg+F5 |
+| Alle Sensoren `unavailable` | Für mindestens eine Quelle gibt es keine Statistik. Der Sensor braucht `state_class: total_increasing` oder `total`. |
+| Füllstand bleibt 0 | Schritt 3 fehlt. |
+| Füllstand sinkt nicht | Falscher Quellsensor – prüfe, ob *Verbrauch seit Betankung* steigt. |
+| Füllstand sinkt zu schnell | Faktor L/m³ – bei der nächsten Betankung die Tankuhr vorher angeben. |
+| Reichweite `unknown` | Rechnerisch mehr als sechs Jahre, oder Jahresverbrauch 0. |
+| Karte nicht im Picker | Browser-Cache: Strg+F5. |
+| „Keine Integration gefunden" | Der Tank ist noch nicht eingerichtet. |
+| Meldung „Statistiksumme gesunken" | Die Statistik der Quelle wurde gelöscht oder neu aufgebaut; die Integration setzt den Bezugspunkt nach. Danach den Füllstand einmal korrigieren. |

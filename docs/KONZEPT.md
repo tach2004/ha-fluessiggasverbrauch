@@ -1,50 +1,121 @@
 # Konzept & Entscheidungen
 
-## Die Ausgangsfrage: eigene Integration oder direkt in Home Assistant?
+## HACS oder Integration – was ist der Unterschied?
 
-Kurz: **beides – aber in dieser Reihenfolge.**
+Das sind zwei verschiedene Dinge, deshalb ist die Antwort „beides":
 
-Die eigentliche Arbeit steckt nicht in der Technik drumherum, sondern in drei
-Dingen: der Umrechnung m³ → Liter → kWh, dem saisonalen Verbrauchsmodell und
-einer Karte, die den Tank vernünftig zeigt. Davon ist genau **eines** an die
-Verpackung gebunden – die anderen beiden funktionieren in einem YAML-Package
-identisch wie in einer Integration.
+* **Integration** ist das *Was*: Python-Code in `custom_components/fluessiggas`,
+  den Home Assistant beim Start lädt. Er bringt den Einrichtungsdialog, die
+  Entitäten und die Dienste mit.
+* **HACS** ist das *Wie*: ein Downloader mit Update-Benachrichtigung. HACS
+  kopiert lediglich den Ordner `custom_components/fluessiggas` an die richtige
+  Stelle und sagt Bescheid, wenn es eine neue Version gibt.
 
-Deshalb Stufe 1 als Package:
+Die JUDO-ZEWA-Integration ist genau dieses Muster: eine custom integration, die
+über HACS verteilt wird. Dieses Repo ist jetzt genauso gebaut – deshalb liegt
+`hacs.json` im Wurzelverzeichnis und die Integration in
+`custom_components/fluessiggas/`.
 
-* läuft heute, ohne HACS, ohne Python, ohne Custom Component
-* jede Formel ist sichtbar und in fünf Sekunden änderbar
-* die Umrechnungsfaktoren müssen sowieso erst an der eigenen Anlage kalibriert
-  werden – das geht mit sichtbarem YAML deutlich schneller
-* das Repo bleibt trotzdem die Quelle der Wahrheit, alles ist versioniert
+Die Alternative war die erste Ausbaustufe: ein YAML-Package mit Hilfsentitäten
+und Template-Sensoren. Das lief, war aber der falsche Weg für ein Repo, das
+andere nutzen sollen – jeder hätte YAML editieren müssen, und über HACS lässt
+sich so etwas nicht als Integration installieren. Deshalb ist es ersetzt worden;
+in der Git-Historie liegt es noch.
 
-Was eine echte Integration später wirklich besser könnte, steht unten unter
-[Ausbaustufe 2](#ausbaustufe-2-echte-integration). Overengineered ist das Vorhaben
-nicht – aber mit einer Integration **anzufangen** wäre der teurere Weg gewesen.
+**Ein Repo, beides drin:** HACS kennt pro Repository nur eine Kategorie. Die
+Lovelace-Karte wandert deshalb mit in den Integrationsordner
+(`custom_components/fluessiggas/frontend/`), und die Integration meldet sie
+beim Start selbst beim Frontend an. Für dich heißt das: installieren,
+einrichten, fertig – kein Eintrag unter *Dashboards → Ressourcen*.
 
-Die Karte (`www/lpg-tank-card.js`) ist bewusst unabhängig gebaut: Sie liest nur
-Entitäten und ruft Skripte auf. Bei einem Umstieg auf eine Integration bleibt sie
-unverändert.
+## Warum kein utility_meter mehr
 
-## Das Rechenmodell
-
-### Füllstand ohne Füllstandssensor
+Home Assistant führt für jeden Verbrauchszähler ohnehin eine Statistik mit, und
+darin steht eine bereinigte Summe (`sum`), in der Zählerrückstellungen bereits
+herausgerechnet sind. Damit gilt schlicht:
 
 ```
-Füllstand [L] = Referenzstand [L] − Verbrauch seit Betankung [m³] × Faktor [L/m³]
+Verbrauch seit Betankung = Summe(jetzt) − Summe(zum Zeitpunkt der Betankung)
 ```
 
-Der Referenzstand kommt vom Menschen (Tankuhr ablesen oder Lieferschein), der
-Verbrauch von der Heizung. Zwei `utility_meter` zählen Heizung und Warmwasser
-seit der letzten Betankung; beim Eintragen einer Betankung werden sie per
-`utility_meter.calibrate` auf 0 gesetzt.
+Das ist derselbe Datenbestand, den du im Energie-Dashboard siehst. Der
+`utility_meter` hätte diese Arbeit nur ein zweites Mal gemacht – mit eigener
+Zählweise, eigenen Rundungsfehlern und einer Hilfsentität mehr.
 
-Der Vorteil gegenüber einem Füllstandssensor am Tank: Es gibt keinen. Der
-Nachteil: Der Wert driftet mit dem Umrechnungsfaktor. Deshalb die
-Selbstkalibrierung bei jeder Betankung – nach dem ersten Tanken stimmt der
-Faktor für die eigene Anlage.
+Zwei Dinge werden dadurch überhaupt erst möglich:
 
-### Die Zahlen hinter den Vorgaben
+* **Rückwirkende Betankungen.** Weil die Statistik nach Zeitpunkt abfragbar
+  ist, kann eine Lieferung mit Datum von vorletzter Woche eingetragen werden –
+  der Verbrauch seither wird korrekt weitergezählt. Ein `utility_meter` kennt
+  nur „jetzt zurücksetzen".
+* **Das Monatsprofil.** Der Verbrauch der letzten Jahre steht bereits in der
+  Datenbank; er muss nicht erst gesammelt werden.
+
+Voraussetzung ist, dass die Quellsensoren `state_class: total_increasing` (oder
+`total`) haben. Das haben sie, sobald sie im Energie-Dashboard auftauchen.
+
+## Reicht ein Jahreswert statt der Monate?
+
+Nein – und die Sorge, dass Monatsdaten fehlen, ist unbegründet.
+
+**Zur Datenlage:** Die Integration liest beim Start die Langzeitstatistik der
+letzten Jahre. Ab Juli 2024 aufgezeichnet und heute im September 2026 bedeutet:
+Jeder Kalendermonat ist mindestens zweimal vorhanden (Januar 2025 und 2026,
+Juli 2024 und 2025, …). Es fehlt nichts, und es muss auch nichts erst
+gesammelt werden – die Prognose ist ab der ersten Minute vollständig.
+
+**Zur Rechenweise:** Ein Jahreswert würde die Frage falsch beantworten. 3.000 L
+Restmenge sind Anfang Oktober noch keine sieben Monate, sondern gut fünf –
+weil Oktober bis März zusammen etwa 70 % des Jahresverbrauchs ausmachen. Mit
+Jahresmittel wäre die Prognose im Herbst systematisch zu optimistisch und im
+Frühjahr zu pessimistisch, also genau dann falsch, wenn es darauf ankommt.
+
+**Und wenn doch Monate fehlen** (bei jemandem mit kürzerer Historie): Sie
+werden nicht mit 0 angesetzt, sondern über die Form einer typischen Heizkurve
+ergänzt und auf das Niveau der gemessenen Monate skaliert. Wer nur Januar bis
+April gemessen hat – 48,5 % der Kurve –, bekommt daraus einen hochgerechneten
+Jahresverbrauch statt einer Prognose, die im Mai in die Unendlichkeit läuft.
+Das Attribut `gemessene_jahre` am Sensor *Jahresverbrauch* zeigt für jeden
+Monat, ob er gemessen oder geschätzt ist.
+
+Die Anzahl der Mittelungsjahre ist einstellbar: 1 = nur das letzte Jahr zählt,
+3 = über drei Jahre glätten. Damit ist ein einzelner Extremwinter entweder
+maßgeblich oder eben nicht.
+
+## Betankung: auch teilweise
+
+Der neue Füllstand ist **Stand vor der Lieferung + Liefermenge**, gedeckelt auf
+den maximalen Füllgrad. Wer 1.000 L auf einen halbleeren Tank tankt, landet bei
+halbleer plus 1.000 L – „voll setzen" gibt es nicht als Automatismus.
+
+Drei Angaben, frei kombinierbar:
+
+| Angabe | Wirkung |
+|---|---|
+| `liter` | Liefermenge, wird auf den Stand davor addiert |
+| `fuellstand_vorher_prozent` | korrigiert den Stand davor auf den abgelesenen Wert **und** kalibriert die Umrechnung |
+| `fuellstand_nachher_prozent` | setzt den Stand absolut; hat Vorrang, weil direkt gemessen |
+
+Jede Lieferung landet mit Datum, Menge, Preis und Kosten in der Historie
+(Attribut `lieferungen` am Sensor *Letzte Betankung*).
+
+## Selbstkalibrierung
+
+Ob die m³ deiner Heizung wirklich 3,92 L Flüssiggas entsprechen, weiß niemand
+vorher – die Heizung rechnet sie aus Brennerlaufzeit und Düsenleistung hoch.
+Gibst du beim Tanken die Tankuhr *vor* der Lieferung an, rechnet die
+Integration:
+
+```
+neuer Faktor = (letzter Referenzstand − abgelesener Stand) / gezählte m³
+```
+
+und schreibt ihn in die Optionen. Plausibilitätsgrenzen (2 bis 6 L/m³) und eine
+Mindestmenge von 20 m³ verhindern, dass ein Tippfehler die Anlage verstellt.
+Nach der ersten Betankung stimmt die Rechnung für deine Anlage statt für die
+Norm.
+
+## Die Zahlen hinter den Vorgaben
 
 | Größe | Wert | Herkunft |
 |---|---|---|
@@ -53,136 +124,55 @@ Faktor für die eigene Anlage.
 | **1 m³ Gas** | **≈ 3,92 L flüssig** | 2,0 / 0,51 |
 | Heizwert Hu | 12,87 kWh/kg = 6,57 kWh/L | |
 | Brennwert Ho | 13,95 kWh/kg = 7,11 kWh/L | |
-| **Vorgabe hier** | **7,0 kWh/L** | 4.120 L × 7,0 = 28.840 kWh |
+| **Vorgabe** | **7,0 kWh/L** | 4.120 L × 7,0 = 28.840 kWh |
 
 Der 85-%-Grenzwert ist keine Marotte: Flüssiges Propan dehnt sich stark aus, der
 Gasraum darüber ist Sicherheitsvolumen. Die mechanische Tankuhr zeigt Prozent
-vom **Nennvolumen**, „voll" sind also 85 %. Die Karte zeigt beides:
-`sensor.gastank_inhalt_prozent` entspricht der Tankuhr,
-`sensor.gastank_inhalt_nutzbar_prozent` rechnet 100 % = randvoll getankt.
+vom **Nennvolumen**, „voll" sind also 85 %. Die Integration liefert beides:
+*Tankuhr* entspricht der mechanischen Anzeige, *Füllung* rechnet 100 % =
+randvoll getankt.
 
-Ob die m³ der Heizung tatsächlich Normkubikmeter Propan sind, hängt von der
-Brennerkonfiguration ab – die Heizung rechnet sie aus Brennerlaufzeit und
-Düsenleistung hoch. Genau deshalb ist der Faktor ein Helfer und keine Konstante.
+## Warum keine Wettervorhersage
 
-### Warum ein Monatsprofil und keine Wetterprognose
+Für die Frage „wann ist der Tank leer" bräuchte man das Wetter der nächsten ein
+bis zwei Jahre – das weiß niemand. Was man weiß: wie kalt der Februar
+*üblicherweise* ist. Und genau das steckt bereits im gemessenen Monatsverbrauch
+der Vorjahre. Das Monatsprofil ist damit die empirische Variante einer
+Gradtagzahl-Rechnung, ohne Zusatzdaten und ohne Wetterdienst.
 
-Ein simples „Restmenge ÷ Tagesdurchschnitt" ist im Sommer katastrophal
-optimistisch und im Winter unnötig pessimistisch. Der Verbrauch schwankt über
-das Jahr etwa um den Faktor 10.
-
-Die Außentemperatur direkt heranzuziehen bringt dagegen nichts, weil niemand
-weiß, wie kalt der Februar in 14 Monaten wird. Was man weiß: wie kalt der Februar
-**üblicherweise** ist – und genau das steckt bereits im gemessenen
-Monatsverbrauch der Vorjahre. Das Monatsprofil ist damit die empirische Variante
-einer Gradtagzahl-Rechnung, nur ohne Zusatzdaten.
-
-Die Simulation läuft Monat für Monat vorwärts:
-
-```
-Tagesrate im Monat m = Monatsmittel[m] × Korrekturfaktor / Tage im Monat
-```
-
-Restmenge abziehen, Monat weiterzählen, und sobald sie unter 0 fällt, im
-angebrochenen Monat linear auf den Tag interpolieren. Ergebnis: ein konkretes
-Datum, nicht nur „noch ca. 8 Monate". Nebenbei fällt der komplette Restverlauf
-ab, den die Karte als Kurve zeichnet.
-
-### Woher das Profil kommt
-
-Drei Wege, in dieser Reihenfolge:
-
-1. **Startwert:** typisches deutsches Heizprofil, skaliert auf 1.400 L/Jahr.
-   Damit ist die Prognose ab Minute eins plausibel, wenn auch nicht persönlich.
-2. **Aus der Historie:** `tools/monatsprofil.py` liest die Langzeitstatistik über
-   die WebSocket-API, mittelt je Kalendermonat über *n* Jahre und schreibt das
-   Ergebnis in den Helfer. Ab Juli 2024 vorhandene Daten reichen dafür aus.
-3. **Selbstlernend:** Am ersten Tag jedes Monats trägt eine Automation den
-   Vormonat als gleitenden Mittelwert nach:
-
-   ```
-   neu = alt + (gemessen − alt) / min(Zähler + 1, Jahre)
-   ```
-
-   `input_number.gastank_prognose_jahre` ist damit exakt die gewünschte
-   Eingabemaske: 1 = nur das letzte Jahr zählt, 3 = über drei Jahre glätten.
-
-`input_number.gastank_prognose_korrektur_prozent` skaliert das ganze Profil –
-praktisch, wenn sich etwas Grundsätzliches geändert hat (neue Dämmung,
-Wärmepumpe für die Übergangszeit, jemand zieht aus).
-
-## Genauigkeit – womit man rechnen muss
+## Genauigkeit
 
 | Fehlerquelle | Größenordnung | Gegenmittel |
 |---|---|---|
 | Umrechnungsfaktor L/m³ | bis ±10 % vor der ersten Kalibrierung | Tankuhr vor dem Tanken eintragen |
 | Ablesegenauigkeit der Tankuhr | ±2 % vom Nennvolumen ≈ ±100 L | mehrfach über die Zeit korrigieren |
-| Milder oder harter Winter | ±15 % beim Jahresverbrauch | Profil über mehrere Jahre mitteln |
+| Milder oder harter Winter | ±15 % beim Jahresverbrauch | über mehrere Jahre mitteln |
 | Zählung der Heizung selbst | 2–5 % | Kalibrierung fängt es mit ein |
 
-Realistisch ist die Leer-Prognose damit ein Jahr im Voraus auf wenige Wochen
-genau – für die Frage „muss ich diesen Herbst bestellen?" mehr als ausreichend.
-Deshalb gibt es zusätzlich `sensor.gastank_bestellen_bis`: Reservedatum minus
-Lieferzeit, das ist der Termin, der wirklich zählt.
+Realistisch ist die Leer-Prognose ein Jahr im Voraus auf wenige Wochen genau –
+für „muss ich diesen Herbst bestellen?" mehr als genug. Deshalb gibt es
+zusätzlich *Bestellen bis*: Reservedatum minus Lieferzeit, das ist der Termin,
+der wirklich zählt.
 
-## Ausbaustufen
+## Was noch kommen könnte
 
-### Ausbaustufe 1 – umgesetzt
-
-Package, Prognose-Makros, Karte, Dashboard, Statistik-Tool, Warnmeldungen bei
-Reserve und Bestellfrist.
-
-### Ausbaustufe 2 – echte Integration
-
-Lohnt sich, sobald Stufe 1 einen Winter lang stabil gelaufen ist. Was sie besser
-kann:
-
-* **Einrichtung per UI** (Config Flow): Tankdaten und Sensoren auswählen statt
-  YAML editieren; Optionen später änderbar.
-* **Statistik direkt lesen:** Das Monatsprofil käme bei jedem Neustart frisch aus
-  dem Recorder, statt in zwei `input_text` zu leben. Das 255-Zeichen-Limit und
-  die Lern-Automation entfielen.
-* **Lieferhistorie als echtes Datenmodell:** Datum, Menge, Preis, Lieferant je
-  Betankung – Grundlage für Preisentwicklung, Kosten je Heizperiode und einen
-  ehrlichen Soll-Ist-Vergleich der letzten Prognose.
-* **Mehrere Tanks / mehrere Häuser.**
-* **HACS-fähig**, damit auch andere es installieren können.
-
-Realistischer Aufwand: ein Wochenende für die Basis, plus Tests. Die Mathematik
-wandert dabei 1:1 aus dem Jinja-Makro nach Python.
-
-### Ausbaustufe 3 – Gradtagzahlen
-
-Statt „Januar verbraucht üblicherweise 217 L" dann „Januar hat üblicherweise
-520 Gradtage, wir verbrauchen 0,42 L je Gradtag". Vorteile:
-
-* Der laufende Winter lässt sich mitkorrigieren: Sind bis Ende Dezember 15 % mehr
-  Gradtage aufgelaufen als im Mittel, wird die Restprognose entsprechend
-  angehoben – aus Vergangenheitsdaten, ohne Wetterprognose.
-* Ein einzelner Ausreißerwinter verfälscht das Profil nicht mehr, weil er sich
-  über die Gradtagzahl herausrechnet.
-
-Nötig dafür: Historie der Außentemperatur (ist über die Heizung vorhanden) und
-ein langjähriges Klimamittel für den Standort. Sinnvoll erst innerhalb der
-Integration.
-
-## Weitere Ideen für später
-
-* **Kalendereintrag statt Push:** Bestelltermin automatisch in einen
-  `local_calendar` schreiben – taucht dann im normalen Kalender auf.
-* **Preisentwicklung:** je Lieferung €/L speichern, daraus ein Chart und der
-  Vergleich „gut oder schlecht eingekauft".
+* **Preisentwicklung.** Die Lieferhistorie speichert bereits €/L je Lieferung.
+  Daraus ließe sich ein Diagramm und die Frage „gut oder schlecht eingekauft"
+  beantworten.
 * **Kosten je Heizperiode** (Juli–Juni statt Kalenderjahr) – die für Heizungen
   eigentlich richtige Betrachtung.
-* **Soll-Ist-Vergleich der Prognose:** Was hat die Prognose vor 6 Monaten für
+* **Gradtagzahl-Korrektur.** Statt „Januar verbraucht üblicherweise 217 L" dann
+  „Januar hat üblicherweise 520 Gradtage, wir brauchen 0,42 L je Gradtag". Damit
+  ließe sich der *laufende* Winter mitkorrigieren: Sind bis Ende Dezember 15 %
+  mehr Gradtage aufgelaufen als im Mittel, steigt die Restprognose entsprechend
+  – rein aus Vergangenheitsdaten. Nötig: Außentemperatur-Historie (hat die
+  Heizung) und ein Klimamittel für den Standort.
+* **Warmwasser getrennt modellieren.** Warmwasser ist konstante Grundlast,
+  Heizung ist saisonal. Getrennte Profile wären etwas genauer und würden zeigen,
+  was der Sommerbetrieb kostet.
+* **Kalendereintrag statt Meldung:** Bestelltermin in einen `local_calendar`
+  schreiben.
+* **Soll-Ist-Vergleich der Prognose:** Was hat die Prognose vor sechs Monaten für
   heute vorhergesagt? Macht das Vertrauen in die Zahl messbar.
-* **Warmwasser getrennt modellieren:** Warmwasser ist eine nahezu konstante
-  Grundlast, Heizung ist saisonal. Getrennte Profile wären etwas genauer und
-  würden zeigen, was der Sommerbetrieb kostet.
-* **Anbindung ans Energie-Dashboard:** ein Verbrauchssensor in kWh aus den m³,
-  damit Gas dort mit dem korrekten Flüssiggas-Energiegehalt und Preis auftaucht.
-* **Vergleichbarkeit:** Verbrauch je Gradtag als Kennzahl über die Jahre – zeigt
-  Dämmmaßnahmen und Heizungsoptimierungen sauberer als der reine Jahresverbrauch.
-* **Zweite Meinung:** Wenn irgendwann doch ein Funk-Füllstandssensor am Tank
-  hängt, wird er einfach zum dritten Weg, den Referenzstand zu setzen – das
-  Modell bleibt gleich.
+* **Ein Füllstandssensor am Tank**, falls doch mal einer angeschraubt wird, wird
+  einfach zum dritten Weg, den Bezugspunkt zu setzen – das Modell bleibt gleich.
