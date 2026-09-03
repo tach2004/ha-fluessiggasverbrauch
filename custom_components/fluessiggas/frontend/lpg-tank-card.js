@@ -20,7 +20,7 @@
  * Die Karte rechnet das Volumen über die Kreissegmentfläche in eine Höhe um.
  */
 
-const LPG_VERSION = "1.1.0";
+const LPG_VERSION = "1.2.0";
 
 /** Kennungen, die die Integration an ihren Entitäten hinterlässt. */
 const KENNUNGEN = [
@@ -359,8 +359,9 @@ class LpgTankCard extends HTMLElement {
 
         <div class="formular" id="formular" hidden>
           <div class="schalter">
-            <button id="m-liefermenge" aria-pressed="true">Getankte Menge</button>
-            <button id="m-tankuhr" aria-pressed="false">Tankuhr ablesen</button>
+            <button id="m-liefermenge" aria-pressed="true">Getankt</button>
+            <button id="m-tankuhr" aria-pressed="false">Tankuhr</button>
+            <button id="m-nachtragen" aria-pressed="false">Nachtragen</button>
           </div>
 
           <div id="block-liefermenge">
@@ -393,6 +394,21 @@ class LpgTankCard extends HTMLElement {
             </div>
           </div>
 
+          <div id="block-nachtragen" hidden>
+            <div class="feld">
+              <label for="n-liter">Liefermenge (Liter, optional)</label>
+              <input id="n-liter" type="number" min="0" step="1" inputmode="decimal" placeholder="z. B. 2500">
+            </div>
+            <div class="feld" style="margin-top:8px">
+              <label for="n-preis">Damals bezahlter Preis (EUR/L)</label>
+              <input id="n-preis" type="number" min="0" step="0.001" inputmode="decimal" placeholder="z. B. 0,638">
+            </div>
+            <div class="hinweis">
+              Trägt eine zurückliegende Lieferung nur in die Historie ein – für den
+              Preisverlauf. Füllstand und Verbrauchszählung bleiben unberührt.
+            </div>
+          </div>
+
           <div class="feld" id="block-datum">
             <label for="f-datum">Datum</label>
             <input id="f-datum" type="date">
@@ -411,7 +427,9 @@ class LpgTankCard extends HTMLElement {
     ["titel", "fehler", "grafik", "liquid", "w1", "w2", "t-prozent", "t-liter", "verlauf",
      "marke-max", "marke-max-text", "marke-reserve", "marke-reserve-text",
      "kacheln", "fuss", "formular", "knopf-form", "preisblock", "preise", "preis-spanne",
-     "m-liefermenge", "m-tankuhr", "block-liefermenge", "block-tankuhr",
+     "m-liefermenge", "m-tankuhr", "m-nachtragen",
+     "block-liefermenge", "block-tankuhr", "block-nachtragen", "block-datum",
+     "n-liter", "n-preis",
      "f-liter", "f-vorher", "f-preis", "f-prozent", "f-datum", "f-abbrechen", "f-speichern"]
       .forEach((id) => {
         this._el[id] = root.getElementById ? root.getElementById(id) : root.querySelector("#" + id);
@@ -452,13 +470,15 @@ class LpgTankCard extends HTMLElement {
 
     const modus = (m) => {
       this._modus = m;
-      e["m-liefermenge"].setAttribute("aria-pressed", String(m === "liefermenge"));
-      e["m-tankuhr"].setAttribute("aria-pressed", String(m === "tankuhr"));
-      e["block-liefermenge"].hidden = m !== "liefermenge";
-      e["block-tankuhr"].hidden = m !== "tankuhr";
+      ["liefermenge", "tankuhr", "nachtragen"].forEach((k) => {
+        e[`m-${k}`].setAttribute("aria-pressed", String(m === k));
+        e[`block-${k}`].hidden = m !== k;
+      });
+      // Bei der Tankuhr zählt der Moment des Ablesens, nicht ein wählbares Datum
+      e["block-datum"].hidden = m === "tankuhr";
     };
-    e["m-liefermenge"].addEventListener("click", () => modus("liefermenge"));
-    e["m-tankuhr"].addEventListener("click", () => modus("tankuhr"));
+    ["liefermenge", "tankuhr", "nachtragen"].forEach((k) =>
+      e[`m-${k}`].addEventListener("click", () => modus(k)));
 
     e["f-speichern"].addEventListener("click", () => this._speichern());
   }
@@ -470,7 +490,18 @@ class LpgTankCard extends HTMLElement {
     const ziel = this._ent.inhalt;
     if (!ziel) return;
 
-    if (this._modus === "tankuhr") {
+    if (this._modus === "nachtragen") {
+      const datum = e["f-datum"].value;
+      const preis = parseFloat(e["n-preis"].value);
+      const liter = parseFloat(e["n-liter"].value);
+      if (!datum) return this._blinken(e["f-datum"]);
+      if (isNaN(preis) && isNaN(liter)) return this._blinken(e["n-preis"]);
+      const daten = { datum };
+      if (!isNaN(liter)) daten.liter = liter;
+      if (!isNaN(preis)) daten.preis_pro_liter = preis;
+      this._hass.callService("fluessiggas", "lieferung_nachtragen", daten,
+        { entity_id: ziel });
+    } else if (this._modus === "tankuhr") {
       const p = parseFloat(e["f-prozent"].value);
       if (isNaN(p)) return this._blinken(e["f-prozent"]);
       this._hass.callService("fluessiggas", "fuellstand_setzen",
@@ -488,7 +519,8 @@ class LpgTankCard extends HTMLElement {
       this._hass.callService("fluessiggas", "betankung", daten, { entity_id: ziel });
     }
 
-    ["f-liter", "f-vorher", "f-preis", "f-prozent"].forEach((k) => { e[k].value = ""; });
+    ["f-liter", "f-vorher", "f-preis", "f-prozent", "n-liter", "n-preis"]
+      .forEach((k) => { e[k].value = ""; });
     e["knopf-form"].click();
   }
 
@@ -797,16 +829,21 @@ class LpgTankCard extends HTMLElement {
   }
 }
 
-customElements.define("lpg-tank-card", LpgTankCard);
+// Die Karte wird über zwei Wege angemeldet (Zusatzmodul und Lovelace-Ressource).
+// Zeigen beide auf dieselbe URL, lädt der Browser sie nur einmal – aber nach
+// einem Versionswechsel können kurzzeitig beide Varianten im Speicher sein.
+if (!customElements.get("lpg-tank-card")) {
+  customElements.define("lpg-tank-card", LpgTankCard);
 
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "lpg-tank-card",
-  name: "Flüssiggastank",
-  preview: false,
-  description: "Grafischer Füllstand eines liegenden Flüssiggastanks inkl. Leer-Prognose und Betankungseingabe.",
-  documentationURL: "https://github.com/tach2004/ha-fluessiggasverbrauch",
-});
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "lpg-tank-card",
+    name: "Flüssiggastank",
+    preview: false,
+    description: "Grafischer Füllstand eines liegenden Flüssiggastanks inkl. Leer-Prognose und Betankungseingabe.",
+    documentationURL: "https://github.com/tach2004/ha-fluessiggasverbrauch",
+  });
+}
 
 console.info(
   `%c LPG-TANK-CARD %c ${LPG_VERSION} `,

@@ -81,6 +81,37 @@ fuellstand_setzen:
           unit_of_measurement: L
           mode: box
 
+lieferung_nachtragen:
+  target:
+    entity:
+      integration: fluessiggas
+      domain: sensor
+  fields:
+    datum:
+      required: true
+      selector:
+        date:
+    liter:
+      required: false
+      example: 2500
+      selector:
+        number:
+          min: 0
+          max: 20000
+          step: 1
+          unit_of_measurement: L
+          mode: box
+    preis_pro_liter:
+      required: false
+      example: 0.638
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 0.001
+          unit_of_measurement: EUR/L
+          mode: box
+
 profil_neu_berechnen:
   target:
     entity:

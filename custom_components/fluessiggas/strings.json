@@ -191,6 +191,24 @@
         }
       }
     },
+    "lieferung_nachtragen": {
+      "name": "Add past delivery",
+      "description": "Records a past delivery in the history only – for the price trend. Level and reference point stay untouched, unlike “Register refill”.",
+      "fields": {
+        "datum": {
+          "name": "Date",
+          "description": "When the delivery took place."
+        },
+        "liter": {
+          "name": "Delivered amount",
+          "description": "Optional, for the cost calculation."
+        },
+        "preis_pro_liter": {
+          "name": "Price per litre",
+          "description": "The price paid back then, in EUR/L."
+        }
+      }
+    },
     "profil_neu_berechnen": {
       "name": "Recalculate monthly profile",
       "description": "Re-reads the monthly consumption of recent years from long-term statistics."

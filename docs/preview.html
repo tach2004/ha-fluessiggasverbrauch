@@ -157,6 +157,12 @@ window.addEventListener("load", () => {
     const karte = document.createElement("lpg-tank-card");
     karte.setConfig({ type: "custom:lpg-tank-card" });
     karte.hass = hassMit(titel.split(" ")[0].toLowerCase(), liter, tage);
+    // #formular bzw. #nachtragen öffnet zum Ansehen das Betankungsformular
+    if (location.hash.includes("formular") || location.hash.includes("nachtragen")) {
+      const w = karte.shadowRoot;
+      w.getElementById("knopf-form").click();
+      if (location.hash.includes("nachtragen")) w.getElementById("m-nachtragen").click();
+    }
     sp.appendChild(karte);
     reihe.appendChild(sp);
   });

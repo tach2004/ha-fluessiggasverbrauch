@@ -24,7 +24,9 @@ Ordner `custom_components/fluessiggas` nach `<config>/custom_components/`
 kopieren und neu starten.
 
 Die Lovelace-Karte bringt die Integration mit und meldet sie selbst an – ein
-Eintrag unter *Dashboards → Ressourcen* ist **nicht** nötig.
+Eintrag unter *Dashboards → Ressourcen* ist **nicht** nötig. Sie trägt sich
+dafür als Ressource ein und entfernt den Eintrag wieder, wenn der letzte Tank
+gelöscht wird.
 
 ## Einrichtung
 
@@ -94,6 +96,7 @@ Konfiguration einen eigenen Preis-Helfer angegeben, dann bleibt deiner die Quell
 |---|---|
 | `fluessiggas.betankung` | Lieferung eintragen – auch eine Teilbetankung |
 | `fluessiggas.fuellstand_setzen` | Tankuhr abgelesen, Zählung neu starten |
+| `fluessiggas.lieferung_nachtragen` | Zurückliegende Lieferung nur in die Historie schreiben |
 | `fluessiggas.profil_neu_berechnen` | Monatsprofil sofort neu aus der Statistik lesen |
 
 ### Teilbetankung
@@ -109,6 +112,17 @@ Angaben, alle optional kombinierbar:
 
 `datum` trägt eine Betankung auch nachträglich ein: Die Integration holt sich
 die Statistiksumme von genau diesem Tag, der Verbrauch danach bleibt korrekt.
+
+### Alte Lieferungen nachtragen
+
+Für den Preisverlauf möchte man oft Lieferungen von früher eintragen. Dafür gibt
+es `fluessiggas.lieferung_nachtragen` mit Datum, Liefermenge und Preis: Der
+Eintrag landet **nur** in der Historie, Füllstand und Bezugspunkt bleiben
+unangetastet. `betankung` mit altem Datum würde dagegen den aktuellen Stand neu
+berechnen – zum Nachtragen ist sie deshalb der falsche Dienst.
+
+In der Karte sitzt das als dritter Reiter im Betankungsformular:
+**Getankt · Tankuhr · Nachtragen**.
 
 ## Gaspreis
 

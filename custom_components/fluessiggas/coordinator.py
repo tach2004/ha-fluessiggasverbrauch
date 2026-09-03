@@ -629,6 +629,40 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             await self.async_request_refresh()
         return eintrag
 
+    async def async_add_history(
+        self,
+        *,
+        moment: datetime,
+        liters: float | None = None,
+        price: float | None = None,
+    ) -> dict[str, Any]:
+        """Eine zurückliegende Lieferung nur in die Historie schreiben.
+
+        Bewusst getrennt von async_register_delivery: Diese setzt den
+        Referenzstand und den Bezugspunkt neu. Wer alte Lieferungen für den
+        Preisverlauf nachträgt, würde sich damit den aktuellen Füllstand
+        zerlegen. Hier bleibt beides unangetastet.
+        """
+        eintrag = {
+            "datum": dt_util.as_local(moment).date().isoformat(),
+            "liter": round(float(liters), 1) if liters is not None else None,
+            "stand_vorher": None,
+            "stand_nachher": None,
+            "preis_pro_liter": round(float(price), 4) if price is not None else None,
+            "kosten": round(float(liters) * float(price), 2)
+            if liters is not None and price is not None
+            else None,
+            "nachgetragen": True,
+        }
+        lieferungen = self.deliveries + [eintrag]
+        # nach Datum sortieren, damit der Preisverlauf chronologisch bleibt und
+        # "Letzte Betankung" weiterhin die jüngste ist
+        lieferungen.sort(key=lambda e: str(e.get("datum") or ""))
+        self._data[STORE_DELIVERIES] = lieferungen[-MAX_DELIVERIES:]
+        await self._async_save()
+        await self.async_request_refresh()
+        return eintrag
+
     async def async_refresh_profile(self) -> Profile:
         """Monatsprofil sofort neu aus der Statistik lesen."""
         self._profile = await self._async_read_profile()

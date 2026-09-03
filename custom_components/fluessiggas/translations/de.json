@@ -191,6 +191,24 @@
         }
       }
     },
+    "lieferung_nachtragen": {
+      "name": "Lieferung nachtragen",
+      "description": "Schreibt eine zurückliegende Lieferung nur in die Historie – für den Preisverlauf. Füllstand und Bezugspunkt bleiben unangetastet, anders als bei „Betankung eintragen“.",
+      "fields": {
+        "datum": {
+          "name": "Datum",
+          "description": "Wann die Lieferung war."
+        },
+        "liter": {
+          "name": "Liefermenge",
+          "description": "Optional, für die Kostenrechnung."
+        },
+        "preis_pro_liter": {
+          "name": "Preis je Liter",
+          "description": "Der damals bezahlte Preis in EUR/L."
+        }
+      }
+    },
     "profil_neu_berechnen": {
       "name": "Monatsprofil neu berechnen",
       "description": "Liest den Monatsverbrauch der letzten Jahre erneut aus der Langzeitstatistik."

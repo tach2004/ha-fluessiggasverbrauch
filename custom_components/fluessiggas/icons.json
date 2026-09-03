@@ -1,8 +1,12 @@
 {
   "entity": {
     "sensor": {
-      "inhalt": { "default": "mdi:propane-tank" },
-      "inhalt_prozent": { "default": "mdi:gauge" },
+      "inhalt": {
+        "default": "mdi:propane-tank"
+      },
+      "inhalt_prozent": {
+        "default": "mdi:gauge"
+      },
       "inhalt_nutzbar": {
         "default": "mdi:gauge",
         "range": {
@@ -12,25 +16,58 @@
           "70": "mdi:gauge-full"
         }
       },
-      "restenergie": { "default": "mdi:lightning-bolt-outline" },
-      "restwert": { "default": "mdi:cash-multiple" },
-      "gaspreis": { "default": "mdi:currency-eur" },
-      "verbrauch_seit_betankung": { "default": "mdi:meter-gas" },
-      "tagesverbrauch": { "default": "mdi:chart-line" },
-      "jahresverbrauch": { "default": "mdi:calendar-range" },
-      "reichweite": { "default": "mdi:calendar-clock" },
-      "leer_am": { "default": "mdi:calendar-remove" },
-      "reserve_am": { "default": "mdi:calendar-alert" },
-      "bestellen_bis": { "default": "mdi:calendar-check" },
-      "letzte_betankung": { "default": "mdi:gas-station" }
+      "restenergie": {
+        "default": "mdi:lightning-bolt-outline"
+      },
+      "restwert": {
+        "default": "mdi:cash-multiple"
+      },
+      "gaspreis": {
+        "default": "mdi:currency-eur"
+      },
+      "verbrauch_seit_betankung": {
+        "default": "mdi:meter-gas"
+      },
+      "tagesverbrauch": {
+        "default": "mdi:chart-line"
+      },
+      "jahresverbrauch": {
+        "default": "mdi:calendar-range"
+      },
+      "reichweite": {
+        "default": "mdi:calendar-clock"
+      },
+      "leer_am": {
+        "default": "mdi:calendar-remove"
+      },
+      "reserve_am": {
+        "default": "mdi:calendar-alert"
+      },
+      "bestellen_bis": {
+        "default": "mdi:calendar-check"
+      },
+      "letzte_betankung": {
+        "default": "mdi:gas-station"
+      }
     },
     "number": {
-      "gaspreis": { "default": "mdi:currency-eur" }
+      "gaspreis": {
+        "default": "mdi:currency-eur"
+      }
     }
   },
   "services": {
-    "betankung": { "service": "mdi:gas-station" },
-    "fuellstand_setzen": { "service": "mdi:gauge" },
-    "profil_neu_berechnen": { "service": "mdi:calendar-refresh" }
+    "betankung": {
+      "service": "mdi:gas-station"
+    },
+    "fuellstand_setzen": {
+      "service": "mdi:gauge"
+    },
+    "lieferung_nachtragen": {
+      "service": "mdi:playlist-plus"
+    },
+    "profil_neu_berechnen": {
+      "service": "mdi:calendar-refresh"
+    }
   }
 }

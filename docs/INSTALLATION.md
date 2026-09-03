@@ -104,6 +104,11 @@ In der Karte aufs Zapfsäulen-Symbol, oder als Dienst `fluessiggas.betankung`:
 | Nachträglich | zusätzlich `datum: 2026-08-14` |
 | Mit Preis | zusätzlich `preis_pro_liter: 0.677` |
 
+**Alte Lieferungen nachtragen** (für den Preisverlauf) ist etwas anderes: dafür
+den Reiter *Nachtragen* bzw. den Dienst `fluessiggas.lieferung_nachtragen` mit
+Datum, Menge und Preis nehmen. Der schreibt nur in die Historie. `betankung` mit
+altem Datum würde stattdessen den aktuellen Füllstand neu berechnen.
+
 Die Kalibrierung lohnt sich: Sie vergleicht den abgelesenen Verbrauch mit den
 gezählten m³ und schreibt den echten Faktor zurück. Danach stimmt die Rechnung
 für deine Anlage statt für die Norm.
@@ -139,7 +144,6 @@ sonst passiert das alle sechs Stunden von allein.
 | Füllstand sinkt nicht | Falscher Quellsensor – prüfe, ob *Verbrauch seit Betankung* steigt. |
 | Füllstand sinkt zu schnell | Faktor L/m³ – bei der nächsten Betankung die Tankuhr vorher angeben. |
 | Reichweite `unknown` | Rechnerisch mehr als sechs Jahre, oder Jahresverbrauch 0. |
-| Karte nicht im Picker | Direkt nach der Ersteinrichtung: einmal Strg+F5. Home Assistant baut die Liste der Zusatzmodule beim Ausliefern der Seite ins HTML – eine bereits offene Seite kennt die Karte noch nicht. |
-| „custom element doesn't exist" nach HA-Neustart | Sollte seit 1.1.0 nicht mehr auftreten. Falls doch: Strg+F5, und prüfen, ob die Integration überhaupt geladen ist. |
+| Karte nicht im Picker, „custom element doesn't exist" | Einmalig nach dem Update auf 1.2.0: Der Service Worker des Frontends liefert Seiten aus einem 24-Stunden-Cache. In der Companion-App *Einstellungen → Companion App → Frontend-Cache zurücksetzen*, im Browser Strg+F5 bzw. Websitedaten löschen. Ab 1.2.0 kommt die Karte über die Ressourcenliste (Websocket, nicht gecacht) und das Problem verschwindet. |
 | „Keine Integration gefunden" | Der Tank ist noch nicht eingerichtet. |
 | Meldung „Statistiksumme gesunken" | Die Statistik der Quelle wurde gelöscht oder neu aufgebaut; die Integration setzt den Bezugspunkt nach. Danach den Füllstand einmal korrigieren. |
