@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Flüssiggastank</title>
+  <defs>
+    <clipPath id="tank">
+      <path d="M 56,86 H 200 A 26,46 0 0 1 200,178 H 56 A 26,46 0 0 0 56,86 Z"/>
+    </clipPath>
+    <linearGradient id="fluessig" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f9bea"/>
+      <stop offset="1" stop-color="#1a63b4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sattel -->
+  <rect x="72"  y="172" width="26" height="26" rx="6" fill="#7d90a6"/>
+  <rect x="158" y="172" width="26" height="26" rx="6" fill="#7d90a6"/>
+  <rect x="54"  y="194" width="62" height="14" rx="7" fill="#5d7186"/>
+  <rect x="140" y="194" width="62" height="14" rx="7" fill="#5d7186"/>
+
+  <!-- Domhaube -->
+  <rect x="106" y="50" width="44" height="38" rx="11" fill="#eef3f9" stroke="#17456f" stroke-width="11"/>
+  <rect x="119" y="36" width="18" height="20" rx="6" fill="#5d7186"/>
+
+  <!-- Tankkörper -->
+  <path d="M 56,86 H 200 A 26,46 0 0 1 200,178 H 56 A 26,46 0 0 0 56,86 Z" fill="#eef3f9"/>
+
+  <!-- Flüssiggas, rund 60 % des Volumens -->
+  <g clip-path="url(#tank)">
+    <path d="M 20,126 q 30,-13 60,0 t 60,0 t 60,0 t 60,0 V 200 H 20 Z" fill="url(#fluessig)"/>
+  </g>
+
+  <!-- Kontur über der Flüssigkeit -->
+  <path d="M 56,86 H 200 A 26,46 0 0 1 200,178 H 56 A 26,46 0 0 0 56,86 Z"
+        fill="none" stroke="#17456f" stroke-width="13" stroke-linejoin="round"/>
+</svg>

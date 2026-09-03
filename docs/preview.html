@@ -123,7 +123,18 @@ function hassMit(tankId, liter, tageBisLeer) {
       e("reichweite", tageBisLeer, { monate }),
       e("leer_am", inTagen(tageBisLeer)),
       e("bestellen_bis", inTagen(tageBisLeer - 110)),
-      e("letzte_betankung", "2025-08-14", { liter: 2450, kosten: 1659 }),
+      e("gaspreis", preis.toFixed(3)),
+      e("reserve_am", inTagen(Math.round(tageBisLeer * 0.72))),
+      e("letzte_betankung", "2025-08-14", {
+        liter: 2450, kosten: 1659, preis_pro_liter: 0.677,
+        lieferungen: [
+          { datum: "2021-09-03", liter: 2900, preis_pro_liter: 0.412 },
+          { datum: "2022-11-18", liter: 2600, preis_pro_liter: 0.918 },
+          { datum: "2023-10-05", liter: 2750, preis_pro_liter: 0.741 },
+          { datum: "2024-09-27", liter: 2500, preis_pro_liter: 0.638 },
+          { datum: "2025-08-14", liter: 2450, preis_pro_liter: 0.677 },
+        ],
+      }),
     ]),
     callService: (d, o, daten, ziel) =>
       alert(`Dienst ${d}.${o}\nZiel: ${JSON.stringify(ziel)}\n` + JSON.stringify(daten, null, 2)),

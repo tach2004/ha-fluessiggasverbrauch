@@ -23,6 +23,7 @@ from .const import (
     CONF_LITER_PER_M3,
     CONF_MAX_FILL,
     CONF_PRICE,
+    CONF_PRICE_ENTITY,
     CONF_PROFILE_YEARS,
     CONF_RESERVE,
     CONF_SOURCE_UNIT,
@@ -81,6 +82,13 @@ def _tank_schema(mit_name: bool) -> vol.Schema:
     return vol.Schema(felder)
 
 
+def _optionale_leeren(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Nicht ausgefüllte optionale Felder ausdrücklich auf None setzen."""
+    daten = dict(user_input)
+    daten.setdefault(CONF_PRICE_ENTITY, None)
+    return daten
+
+
 def _details_schema() -> vol.Schema:
     """Umrechnung, Preis und Prognoseverhalten."""
     return vol.Schema(
@@ -92,6 +100,11 @@ def _details_schema() -> vol.Schema:
                 4, 9, 0.01, "kWh/L"
             ),
             vol.Required(CONF_PRICE, default=DEFAULT_PRICE): _zahl(0, 10, 0.001, "EUR/L"),
+            vol.Optional(CONF_PRICE_ENTITY): selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain=["input_number", "number", "sensor"], multiple=False
+                )
+            ),
             vol.Required(CONF_RESERVE, default=DEFAULT_RESERVE): _zahl(0, 5000, 10, "L"),
             vol.Required(CONF_LEAD_TIME, default=DEFAULT_LEAD_TIME): _zahl(0, 180, 1, "d"),
             vol.Required(CONF_PROFILE_YEARS, default=DEFAULT_PROFILE_YEARS): _zahl(1, 10, 1, "a"),
@@ -134,7 +147,9 @@ class FluessiggasConfigFlow(ConfigFlow, domain=DOMAIN):
         """Schritt 2: Umrechnung, Preis, Prognose."""
         if user_input is not None:
             name = self._daten.pop(CONF_NAME, DEFAULT_NAME)
-            return self.async_create_entry(title=name, data={**self._daten, **user_input})
+            return self.async_create_entry(
+                title=name, data={**self._daten, **_optionale_leeren(user_input)}
+            )
 
         return self.async_show_form(
             step_id="details",
@@ -159,10 +174,11 @@ class FluessiggasOptionsFlow(OptionsFlow):
             if not user_input.get(CONF_SOURCES):
                 fehler[CONF_SOURCES] = "keine_quelle"
             else:
-                return self.async_create_entry(data=user_input)
+                return self.async_create_entry(data=_optionale_leeren(user_input))
 
         aktuell = {**self.config_entry.data, **self.config_entry.options}
         aktuell.pop(CONF_NAME, None)
+        aktuell = {k: v for k, v in aktuell.items() if v is not None}
         schema = _tank_schema(False).extend(_details_schema().schema)
         return self.async_show_form(
             step_id="init",

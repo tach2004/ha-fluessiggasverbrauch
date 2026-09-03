@@ -1,12 +1,18 @@
 {
   "domain": "fluessiggas",
   "name": "Flüssiggastank",
-  "codeowners": ["@tach2004"],
+  "codeowners": [
+    "@tach2004"
+  ],
   "config_flow": true,
-  "dependencies": ["recorder", "http", "frontend"],
+  "dependencies": [
+    "recorder",
+    "http",
+    "frontend"
+  ],
   "documentation": "https://github.com/tach2004/ha-fluessiggasverbrauch",
   "integration_type": "service",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/tach2004/ha-fluessiggasverbrauch/issues",
-  "version": "1.0.0"
+  "version": "1.1.0"
 }

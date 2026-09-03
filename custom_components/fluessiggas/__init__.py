@@ -19,6 +19,7 @@ from homeassistant.helpers import (
     device_registry as dr,
     entity_registry as er,
 )
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -41,7 +42,7 @@ from .coordinator import TankCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.NUMBER, Platform.SENSOR]
 KARTE_REGISTRIERT = f"{DOMAIN}_karte"
 
 
@@ -76,14 +77,30 @@ SET_LEVEL_FIELDS = (
 TankConfigEntry = ConfigEntry[TankCoordinator]
 
 
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Wird geladen, bevor der erste Tank eingerichtet wird.
+
+    Die Karte hängt bewusst hier und nicht in async_setup_entry: Home Assistant
+    backt die Liste der Zusatz-Module beim Ausliefern der Seite in das HTML.
+    Wird sie erst nach dem ersten Statistiklauf angemeldet, lädt der Browser
+    nach einem Neustart eine Seite ohne unser Skript – die Karte meldet dann
+    "custom element doesn't exist" und die Kartenauswahl dreht sich endlos.
+    Hier registriert, steht die Route auch dann, wenn die Einrichtung eines
+    Tanks später scheitert oder wiederholt wird.
+    """
+    await _async_register_card(hass)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: TankConfigEntry) -> bool:
     """Einen Tank einrichten."""
+    await _async_register_card(hass)
+
     coordinator = TankCoordinator(hass, entry)
     await coordinator.async_load()
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
-    await _async_register_card(hass)
     _async_register_services(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

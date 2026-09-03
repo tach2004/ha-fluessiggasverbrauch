@@ -46,7 +46,6 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
     TankSensorDescription(
         key="inhalt",
         translation_key="inhalt",
-        icon="mdi:propane-tank",
         native_unit_of_measurement=UnitOfVolume.LITERS,
         device_class=SensorDeviceClass.VOLUME_STORAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -61,7 +60,6 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
     TankSensorDescription(
         key="inhalt_prozent",
         translation_key="inhalt_prozent",
-        icon="mdi:gauge",
         native_unit_of_measurement="%",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
@@ -70,7 +68,6 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
     TankSensorDescription(
         key="inhalt_nutzbar",
         translation_key="inhalt_nutzbar",
-        icon="mdi:gauge",
         native_unit_of_measurement="%",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
@@ -79,7 +76,6 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
     TankSensorDescription(
         key="restenergie",
         translation_key="restenergie",
-        icon="mdi:lightning-bolt-outline",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
@@ -88,16 +84,26 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
     TankSensorDescription(
         key="restwert",
         translation_key="restwert",
-        icon="mdi:cash-multiple",
         native_unit_of_measurement="EUR",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
         value_fn=lambda s, c: s.value_eur,
     ),
     TankSensorDescription(
+        key="gaspreis",
+        translation_key="gaspreis",
+        native_unit_of_measurement="EUR/L",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+        value_fn=lambda s, c: s.price,
+        attrs_fn=lambda s, c: {
+            "quelle": c.price_entity or "integration",
+            "preis_pro_m3": round(s.price * c.liter_per_m3, 4),
+        },
+    ),
+    TankSensorDescription(
         key="verbrauch_seit_betankung",
         translation_key="verbrauch_seit_betankung",
-        icon="mdi:meter-gas",
         native_unit_of_measurement=UnitOfVolume.LITERS,
         device_class=SensorDeviceClass.VOLUME,
         state_class=SensorStateClass.TOTAL_INCREASING,
@@ -111,7 +117,6 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
     TankSensorDescription(
         key="tagesverbrauch",
         translation_key="tagesverbrauch",
-        icon="mdi:chart-line",
         native_unit_of_measurement="L/d",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
@@ -120,7 +125,6 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
     TankSensorDescription(
         key="jahresverbrauch",
         translation_key="jahresverbrauch",
-        icon="mdi:calendar-range",
         native_unit_of_measurement=UnitOfVolume.LITERS,
         suggested_display_precision=0,
         value_fn=lambda s, c: round(s.profile.annual * c.correction) if s.profile else None,
@@ -129,7 +133,6 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
     TankSensorDescription(
         key="reichweite",
         translation_key="reichweite",
-        icon="mdi:calendar-clock",
         native_unit_of_measurement="d",
         suggested_display_precision=0,
         value_fn=lambda s, c: s.forecast.days_to_empty,
@@ -141,28 +144,24 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
     TankSensorDescription(
         key="leer_am",
         translation_key="leer_am",
-        icon="mdi:calendar-remove",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda s, c: _als_datum(s.forecast.empty_on),
     ),
     TankSensorDescription(
         key="reserve_am",
         translation_key="reserve_am",
-        icon="mdi:calendar-alert",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda s, c: _als_datum(s.forecast.reserve_on),
     ),
     TankSensorDescription(
         key="bestellen_bis",
         translation_key="bestellen_bis",
-        icon="mdi:calendar-check",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda s, c: _als_datum(s.forecast.order_by),
     ),
     TankSensorDescription(
         key="letzte_betankung",
         translation_key="letzte_betankung",
-        icon="mdi:gas-station",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda s, c: (
             _als_datum(dt_util.parse_date(s.last_delivery["datum"]))
