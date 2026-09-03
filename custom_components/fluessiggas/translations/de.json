@@ -27,7 +27,8 @@
           "reserve": "Reserve",
           "lead_time": "Vorlaufzeit der Lieferung",
           "profile_years": "Mittelung über Jahre",
-          "correction": "Korrekturfaktor der Prognose"
+          "correction": "Korrekturfaktor der Prognose",
+          "price_entity": "Vorhandener Preis-Helfer"
         },
         "data_description": {
           "liter_per_m3": "Propan im Normzustand: rund 3,92. Wird bei der ersten Betankung automatisch nachkalibriert, wenn du die Tankuhr davor angibst.",
@@ -36,7 +37,8 @@
           "reserve": "Ab dieser Restmenge gilt der Tank als leer – Grundlage für die Bestellfrist.",
           "lead_time": "Wie lange es vom Bestellen bis zum Tankwagen dauert.",
           "profile_years": "Über wie viele Jahre der Verbrauch je Kalendermonat gemittelt wird.",
-          "correction": "Skaliert die gesamte Prognose – nützlich nach Dämmung oder Umbau."
+          "correction": "Skaliert die gesamte Prognose – nützlich nach Dämmung oder Umbau.",
+          "price_entity": "Optional. Eine input_number oder ein Sensor, in dem dein Gaspreis schon steht. Bei EUR/m³ rechnet die Integration selbst in Liter um und trägt einen beim Tanken angegebenen Preis dort wieder ein. Leer lassen: dann legt die Integration eine eigene Zahl „Gaspreis“ an."
         }
       }
     },
@@ -60,7 +62,8 @@
           "reserve": "Reserve",
           "lead_time": "Vorlaufzeit der Lieferung",
           "profile_years": "Mittelung über Jahre",
-          "correction": "Korrekturfaktor der Prognose"
+          "correction": "Korrekturfaktor der Prognose",
+          "price_entity": "Vorhandener Preis-Helfer"
         },
         "data_description": {
           "sources": "Die kumulativen Zähler deiner Heizung, z. B. Heizgas und Warmwassergas. Mehrere Sensoren werden addiert.",
@@ -73,7 +76,8 @@
           "reserve": "Ab dieser Restmenge gilt der Tank als leer – Grundlage für die Bestellfrist.",
           "lead_time": "Wie lange es vom Bestellen bis zum Tankwagen dauert.",
           "profile_years": "Über wie viele Jahre der Verbrauch je Kalendermonat gemittelt wird.",
-          "correction": "Skaliert die gesamte Prognose – nützlich nach Dämmung oder Umbau."
+          "correction": "Skaliert die gesamte Prognose – nützlich nach Dämmung oder Umbau.",
+          "price_entity": "Optional. Eine input_number oder ein Sensor, in dem dein Gaspreis schon steht. Bei EUR/m³ rechnet die Integration selbst in Liter um und trägt einen beim Tanken angegebenen Preis dort wieder ein. Leer lassen: dann legt die Integration eine eigene Zahl „Gaspreis“ an."
         }
       }
     },
@@ -131,6 +135,14 @@
       },
       "letzte_betankung": {
         "name": "Letzte Betankung"
+      },
+      "gaspreis": {
+        "name": "Gaspreis"
+      }
+    },
+    "number": {
+      "gaspreis": {
+        "name": "Gaspreis"
       }
     }
   },

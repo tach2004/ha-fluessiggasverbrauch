@@ -37,6 +37,10 @@ views:
               - sensor.flussiggastank_restenergie
               - sensor.flussiggastank_restwert
               - type: divider
+              - entity: number.flussiggastank_gaspreis
+                name: Gaspreis (EUR/L)
+              - sensor.flussiggastank_gaspreis
+              - type: divider
               - sensor.flussiggastank_tagesverbrauch
               - sensor.flussiggastank_verbrauch_seit_betankung
               - sensor.flussiggastank_letzte_betankung
@@ -88,6 +92,16 @@ views:
               # hier deine eigenen Gasverbrauchs-Sensoren eintragen
               - sensor.e3_vitodens_200_0821_heizgasverbrauch_dieses_jahr
               - sensor.e3_vitodens_200_0821_warmwasser_gasverbrauch_dieses_jahr
+
+          - type: statistics-graph
+            title: Preisentwicklung
+            chart_type: line
+            period: month
+            days_to_show: 1825
+            stat_types:
+              - mean
+            entities:
+              - sensor.flussiggastank_gaspreis
 
           - type: markdown
             title: Monatsprofil

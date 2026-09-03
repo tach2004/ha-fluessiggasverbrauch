@@ -82,6 +82,56 @@ Die Anzahl der Mittelungsjahre ist einstellbar: 1 = nur das letzte Jahr zählt,
 3 = über drei Jahre glätten. Damit ist ein einzelner Extremwinter entweder
 maßgeblich oder eben nicht.
 
+## Wie der Füllstand sinkt
+
+Genau so, wie vermutet – in vier Schritten:
+
+1. Home Assistant führt für jeden Verbrauchszähler eine Statistik mit einer
+   bereinigten Summe (`sum`). Die Integration liest sie alle fünf Minuten.
+2. `Summe(jetzt) − Summe(bei der Betankung)` ergibt den Verbrauch seither, in
+   der Einheit des Zählers – bei einer Viessmann also m³.
+3. Diese m³ werden mit dem Faktor (Vorgabe 3,92) in Liter Flüssiggas
+   umgerechnet. Zählt eine Quelle in kWh, wird stattdessen durch den
+   Energieinhalt je Liter geteilt; zählt sie in Litern, entfällt die Umrechnung.
+   Die Einheit kommt aus den Statistik-Metadaten, nicht aus der Anzeige – bei
+   einer abweichend eingestellten Anzeigeeinheit wäre die Rechnung sonst still
+   falsch.
+4. `Referenzstand − verbrauchte Liter` ist der Füllstand. Die Prozentanzeige ist
+   davon abgeleitet: durch das Nennvolumen für die Tankuhr, durch die nutzbare
+   Menge für die Füllung.
+
+Die 51 % auf der Tankuhr werden also nicht direkt fortgeschrieben, sondern
+immer aus den Litern neu berechnet. Das ist wichtig, weil der Zusammenhang
+zwischen Höhe und Volumen im liegenden Zylinder nicht linear ist – die Karte
+berücksichtigt das beim Zeichnen des Flüssigkeitsspiegels.
+
+## Woher die Statistikwerte kommen
+
+Nicht über eigenes SQL auf der Datenbank, sondern über die offizielle
+Recorder-Schnittstelle: `statistics_during_period` und
+`get_last_short_term_statistics`. Die Aufrufe laufen im Executor des Recorders,
+also auf demselben Thread, der auch sonst auf die Datenbank zugreift – kein
+paralleler Zugriff, keine Annahmen über SQLite oder MariaDB, keine eigenen
+Verbindungen.
+
+Gelesen wird nicht der Zustand der Sensoren, sondern deren aufsummierte
+Statistik. Der Unterschied ist wichtig: Der Zustand deiner „dieses Jahr"-Sensoren
+springt zum Jahreswechsel auf 0 zurück, die Statistiksumme läuft durch, weil
+Home Assistant den Rücksprung bereits als Zählerreset erkannt und
+herausgerechnet hat.
+
+## Mehr Mittelungsjahre einstellen, als Daten vorhanden sind
+
+Das ist ausdrücklich vorgesehen. Die Einstellung ist eine Obergrenze, kein
+Anspruch: Je Kalendermonat werden die *bis zu* n jüngsten Jahre genommen. Bei
+zwei Jahren Historie und der Einstellung 5 fließen eben zwei Jahre ein.
+
+Was dabei nicht passiert: Fehlende Jahre werden nicht als 0 mitgemittelt – sie
+kommen gar nicht erst in die Rechnung. Und Monate, für die es überhaupt keine
+Messwerte gibt, werden über die Form der Standard-Heizkurve ergänzt statt
+genullt. Das Attribut `gemessene_jahre` am Sensor *Jahresverbrauch* zeigt für
+jeden Monat, worauf er beruht.
+
 ## Betankung: auch teilweise
 
 Der neue Füllstand ist **Stand vor der Lieferung + Liefermenge**, gedeckelt auf
@@ -98,6 +148,58 @@ Drei Angaben, frei kombinierbar:
 
 Jede Lieferung landet mit Datum, Menge, Preis und Kosten in der Historie
 (Attribut `lieferungen` am Sensor *Letzte Betankung*).
+
+## Warum die Karte nach einem Neustart fehlte
+
+Ein echter Fehler in 1.0.0, behoben in 1.1.0. Home Assistant liefert
+Lovelace-Zusatzmodule nicht per Websocket nach, sondern backt sie beim
+Ausliefern der Seite als `<script type="module">` in das HTML – die Liste dafür
+kommt aus `hass.data[DATA_EXTRA_MODULE_URL]`.
+
+In 1.0.0 wurde die Karte erst in `async_setup_entry` angemeldet, und zwar *nach*
+`async_config_entry_first_refresh()`. Dieser erste Durchlauf las unter anderem
+das Monatsprofil – mehrere Jahre Statistik über alle Quellen, beim Start
+zusätzlich hinter dem Rückstand des Recorders eingereiht. Lud der Browser die
+Seite vorher, fehlte das Skript-Tag komplett: „custom element doesn't exist",
+und die Kartenauswahl wartete auf ein Modul, das nie kam.
+
+Zwei Änderungen, beide nötig:
+
+* Die Karte wird jetzt in `async_setup` angemeldet, also bevor überhaupt ein
+  Tank eingerichtet wird. Die Route steht damit auch dann, wenn die Einrichtung
+  später scheitert – vorher lief eine bereits gecachte Seite mit Skript-Tag in
+  einen 404, was denselben Effekt hatte.
+* Das Monatsprofil wird nicht mehr im Aktualisierungspfad gelesen, sondern in
+  einer Hintergrundaufgabe. Die Einrichtung wartet nicht mehr darauf; bis das
+  Profil da ist, rechnet die Prognose mit der Standardkurve weiter.
+
+Unvermeidbar bleibt: Direkt nach der *Erst*installation muss die Seite einmal
+neu geladen werden (Strg+F5). Ein bereits ausgeliefertes HTML kann kein
+Skript-Tag nachwachsen lassen.
+
+## Gaspreis: vorhandener Helfer oder eigene Entität
+
+Der Preis ist überall EUR je Liter – Anzeige wie Eingabe. Woher er kommt, ist
+konfigurierbar:
+
+* Ist im Feld *Vorhandener Preis-Helfer* eine Entität angegeben, ist sie die
+  Quelle. Steht sie in EUR/m³, wird mit dem konfigurierten Faktor in Liter
+  umgerechnet. Ein beim Tanken eingegebener Preis wird dorthin zurückgeschrieben
+  – bei `input_number` und `number` per `set_value`, bei einem Sensor nicht,
+  weil der sich nicht setzen lässt.
+* Ohne Angabe legt die Integration die Zahl *Gaspreis* an.
+
+In beiden Fällen gibt es zusätzlich den **Sensor** *Gaspreis* mit
+`state_class: measurement`. Das ist der eigentliche Kniff: Eine `input_number`
+hat nur Kurzzeit-Historie, die nach `purge_keep_days` (Vorgabe 10 Tage)
+verschwindet. Ein Sensor mit `state_class` landet in der Langzeitstatistik und
+bleibt jahrelang erhalten. Damit lässt sich der Preisverlauf auch in einer
+`statistics-graph`-Karte darstellen, nicht nur in der Tankkarte.
+
+Die Karte selbst zeichnet allerdings nicht diesen Sensor, sondern die
+**tatsächlich bezahlten Preise** aus der Lieferhistorie. Das ist die Reihe, die
+die Frage „gut oder schlecht eingekauft" beantwortet – der laufende Marktpreis
+zwischen zwei Lieferungen ist dafür Rauschen.
 
 ## Selbstkalibrierung
 
@@ -176,3 +278,34 @@ der wirklich zählt.
   heute vorhergesagt? Macht das Vertrauen in die Zahl messbar.
 * **Ein Füllstandssensor am Tank**, falls doch mal einer angeschraubt wird, wird
   einfach zum dritten Weg, den Bezugspunkt zu setzen – das Modell bleibt gleich.
+
+## Marktpreise aus dem Netz – Einschätzung
+
+Technisch machbar, aber nicht als Dauerabfrage empfehlenswert.
+
+Portale wie 123-fluessiggas.de haben keine offene Schnittstelle. Man müsste das
+Angebotsformular nachbauen: Postleitzahl, Bestellmenge, Füllstand und
+Tankeigentum als Formularfelder abschicken und den Preis aus der Antwortseite
+herauslesen. Das funktioniert – bis zum nächsten Umbau der Seite, und dann
+liefert es entweder nichts mehr oder, schlimmer, eine falsche Zahl.
+
+Dazu kommen zwei Punkte, die schwerer wiegen als der Aufwand:
+
+* Ein Angebotsrechner ist keine Preisliste. Der Preis hängt an Menge,
+  Liefergebiet und Tagesform; ein einzelner abgefragter Wert ist eine
+  unverbindliche Momentaufnahme für genau diese Eingaben.
+* Eine Integration, die bei jedem Nutzer regelmäßig automatisiert Angebote
+  abruft, erzeugt bei den Betreibern Last, der niemand zugestimmt hat. Die
+  Nutzungsbedingungen solcher Portale untersagen automatisierte Abfragen in aller
+  Regel ausdrücklich.
+
+Wenn, dann so: als Dienst, den man **von Hand auslöst**, wenn man ohnehin
+bestellen will – nicht als Fünf-Minuten-Abfrage. Und mit einer klaren Trennung
+je Anbieter, damit ein Umbau nur einen Abrufer lahmlegt statt der Integration.
+
+Der ehrlichere Weg für „soll ich jetzt tanken?" ist ohnehin schon eingebaut:
+Der eigene Preisverlauf aus den Lieferungen zeigt die Bandbreite, in der man
+tatsächlich einkauft, und *Bestellen bis* sagt, wie viel Zeit zum Vergleichen
+bleibt. Wer eine echte Marktreihe will, ist mit einer veröffentlichten
+Preisstatistik als Quelle besser bedient als mit einem abgegriffenen
+Angebotsformular.

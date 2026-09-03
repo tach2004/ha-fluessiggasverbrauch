@@ -88,6 +88,42 @@ def test_einheitenauswahl_ist_uebersetzt():
         assert einheiten == optionen, (sprache, einheiten ^ optionen)
 
 
+def test_icons_decken_alle_entitaeten_und_dienste_ab():
+    icons = _json(INTEGRATION / "icons.json")
+    sensoren = set(re.findall(r'translation_key="([a-z_]+)"', _quelltext("sensor.py")))
+    assert set(icons["entity"]["sensor"]) == sensoren, (
+        set(icons["entity"]["sensor"]) ^ sensoren
+    )
+
+    nummern = set(re.findall(r'_attr_translation_key = "([a-z_]+)"', _quelltext("number.py")))
+    assert set(icons["entity"]["number"]) == nummern, (
+        set(icons["entity"]["number"]) ^ nummern
+    )
+
+    dienste = set(yaml.safe_load((INTEGRATION / "services.yaml").read_text(encoding="utf-8")))
+    assert set(icons["services"]) == dienste, set(icons["services"]) ^ dienste
+
+    # Icons gehören in icons.json, nicht mehr in die Entitätsbeschreibung
+    assert 'icon="mdi:' not in _quelltext("sensor.py")
+
+
+def test_number_entitaet_ist_uebersetzt():
+    nummern = set(re.findall(r'_attr_translation_key = "([a-z_]+)"', _quelltext("number.py")))
+    assert nummern, "number.py sollte einen translation_key setzen"
+    for sprache in SPRACHEN:
+        texte = _json(INTEGRATION / "translations" / f"{sprache}.json")["entity"]
+        assert set(texte.get("number", {})) == nummern, sprache
+
+
+def test_karte_kennt_alle_entitaetskennungen():
+    """Die Karte findet ihre Werte über die Kennungen – sie müssen vollständig sein."""
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    block = re.search(r"const KENNUNGEN = \[(.*?)\];", karte, re.S).group(1)
+    in_karte = set(re.findall(r'"([a-z_]+)"', block))
+    sensoren = set(re.findall(r'translation_key="([a-z_]+)"', _quelltext("sensor.py")))
+    assert in_karte == sensoren, in_karte ^ sensoren
+
+
 def test_strings_entspricht_englisch():
     assert _json(INTEGRATION / "strings.json") == _json(
         INTEGRATION / "translations" / "en.json"

@@ -58,13 +58,18 @@ tank: Gartenhaus       # nur nötig, wenn mehrere Tanks eingerichtet sind
 warn_prozent: 25       # ab hier gelb (% der nutzbaren Füllung)
 alarm_prozent: 12      # ab hier rot
 verlauf: true          # Restverlauf der kommenden Monate
+preisverlauf: true     # Preisentwicklung der eingetragenen Lieferungen
 betankung: true        # Betankungsformular
 wellen: true           # Wellenanimation
 ```
 
+Die Karte zeigt sechs Kennzahlen unter dem Tank – Restenergie, Ø Verbrauch,
+Reichweite, **Reserve erreicht**, voraussichtlich leer und Bestellfrist – sowie
+darunter die Preisentwicklung, sobald zwei Lieferungen mit Preis eingetragen sind.
+
 ## Entitäten
 
-Je Tank entsteht ein Gerät mit 13 Sensoren:
+Je Tank entsteht ein Gerät mit 14 Sensoren:
 
 | Sensor | Bedeutung |
 |---|---|
@@ -72,12 +77,16 @@ Je Tank entsteht ein Gerät mit 13 Sensoren:
 | Tankuhr | % vom Nennvolumen – wie die mechanische Anzeige |
 | Füllung | % der nutzbaren Menge, 100 % = randvoll getankt |
 | Restenergie / Restwert | kWh und EUR |
+| Gaspreis | EUR/L, mit Langzeitstatistik – daraus wird der Preisverlauf |
 | Verbrauch seit Betankung | Liter seit dem letzten Bezugspunkt |
 | Tagesverbrauch | Ø Liter pro Tag |
 | Jahresverbrauch | erwarteter Jahresverbrauch, Attribut `monatsprofil` |
 | Reichweite | Tage bis leer, Attribut `monate` mit dem Verlauf |
 | Leer am / Reserve erreicht am / Bestellen bis | konkrete Daten |
 | Letzte Betankung | Datum, Attribut `lieferungen` mit der Historie |
+
+Dazu kommt die Zahl **Gaspreis** (EUR/L) zum Eintragen – außer du hast in der
+Konfiguration einen eigenen Preis-Helfer angegeben, dann bleibt deiner die Quelle.
 
 ## Dienste
 
@@ -101,6 +110,23 @@ Angaben, alle optional kombinierbar:
 `datum` trägt eine Betankung auch nachträglich ein: Die Integration holt sich
 die Statistiksumme von genau diesem Tag, der Verbrauch danach bleibt korrekt.
 
+## Gaspreis
+
+Der Preis ist immer **EUR je Liter** – in der Anzeige wie in der Eingabe.
+
+* **Ohne eigenen Helfer** legt die Integration die Zahl *Gaspreis* an. Anders als
+  eine `input_number` ist der zugehörige Sensor mit `state_class: measurement`
+  ausgestattet und landet damit in der Langzeitstatistik: Der Preisverlauf
+  bleibt über Jahre erhalten.
+* **Mit eigenem Helfer** (Feld *Vorhandener Preis-Helfer*) bleibt deine
+  `input_number` die Quelle. Steht sie in EUR/m³, rechnet die Integration mit dem
+  konfigurierten Faktor selbst in Liter um.
+
+Trägst du beim Tanken einen Preis ein, wird er übernommen: in den eigenen
+Helfer zurückgeschrieben, wenn er beschreibbar ist, sonst intern gemerkt. Jede
+Lieferung landet mit Datum, Menge, Preis und Kosten in der Historie – daraus
+zeichnet die Karte die Preisentwicklung.
+
 ## Wie die Prognose rechnet
 
 Ein Tagesdurchschnitt taugt nicht – im Januar geht rund zehnmal so viel weg wie
@@ -122,8 +148,17 @@ Details und die Entscheidungen dahinter: [docs/KONZEPT.md](docs/KONZEPT.md).
 | 1 m³ Gas | ≈ 3,92 L flüssig |
 | Energieinhalt | 7,0 kWh/L (Heizwert 6,57 / Brennwert 7,11) |
 | Maximaler Füllgrad | 85 % – der Rest ist Ausdehnungsraum |
+| Reserve (Vorgabe) | 970 L = 20 % vom Nennvolumen |
 
 Beispiel: 4.850 L Nennvolumen → 4.122 L nutzbar → rund **28.800 kWh**.
+
+## Logo
+
+Home Assistant lädt Integrations-Logos ausschließlich von
+`brands.home-assistant.io`; eine custom integration kann ihres nicht
+mitliefern. Das fertige Symbol liegt in [`brands/`](brands/) samt Anleitung zum
+Eintragen. Die Symbole der Entitäten und Dienste bestimmt die Integration
+dagegen selbst – die wirken sofort.
 
 ## Tests
 

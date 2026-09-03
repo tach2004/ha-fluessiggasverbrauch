@@ -14,6 +14,7 @@ CONF_MAX_FILL: Final = "max_fill"
 CONF_LITER_PER_M3: Final = "liter_per_m3"
 CONF_KWH_PER_LITER: Final = "kwh_per_liter"
 CONF_PRICE: Final = "price_per_liter"
+CONF_PRICE_ENTITY: Final = "price_entity"
 CONF_RESERVE: Final = "reserve"
 CONF_LEAD_TIME: Final = "lead_time"
 CONF_PROFILE_YEARS: Final = "profile_years"
@@ -32,7 +33,7 @@ DEFAULT_MAX_FILL: Final = 85.0          # % – Sicherheitsgrenze für die Ausde
 DEFAULT_LITER_PER_M3: Final = 3.92      # 1 m³ Propan im Normzustand ≈ 3,92 L flüssig
 DEFAULT_KWH_PER_LITER: Final = 7.0      # zwischen Heizwert 6,57 und Brennwert 7,11
 DEFAULT_PRICE: Final = 0.70             # EUR/L
-DEFAULT_RESERVE: Final = 400.0          # L
+DEFAULT_RESERVE: Final = 970.0          # L – 20 % von 4850 L
 DEFAULT_LEAD_TIME: Final = 21           # Tage Vorlaufzeit der Lieferung
 DEFAULT_PROFILE_YEARS: Final = 2
 DEFAULT_CORRECTION: Final = 100.0       # %
@@ -50,6 +51,7 @@ STORE_LEVEL: Final = "level"
 STORE_BASELINE: Final = "baseline"
 STORE_REFERENCE_AT: Final = "reference_at"
 STORE_DELIVERIES: Final = "deliveries"
+STORE_PRICE: Final = "price"
 
 # ----------------------------------------------------------------- Dienste
 SERVICE_DELIVERY: Final = "betankung"
@@ -68,4 +70,9 @@ ATTR_PERCENT: Final = "prozent"
 CARD_URL: Final = "/fluessiggas/lpg-tank-card.js"
 CARD_FILENAME: Final = "lpg-tank-card.js"
 
-VERSION: Final = "1.0.0"
+#: Einheiten, in denen ein vorhandener Preis-Helfer stehen kann
+PRICE_UNITS_VOLUME: Final = ("m³", "m3", "eur/m³", "eur/m3", "€/m³", "€/m3")
+#: Domains, in die die Integration einen Preis zurückschreiben darf
+PRICE_WRITABLE_DOMAINS: Final = ("input_number", "number")
+
+VERSION: Final = "1.1.0"

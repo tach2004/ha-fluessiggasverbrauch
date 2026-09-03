@@ -20,12 +20,12 @@
  * Die Karte rechnet das Volumen über die Kreissegmentfläche in eine Höhe um.
  */
 
-const LPG_VERSION = "1.0.0";
+const LPG_VERSION = "1.1.0";
 
 /** Kennungen, die die Integration an ihren Entitäten hinterlässt. */
 const KENNUNGEN = [
   "inhalt", "inhalt_prozent", "inhalt_nutzbar", "restenergie", "restwert",
-  "verbrauch_seit_betankung", "tagesverbrauch", "jahresverbrauch",
+  "gaspreis", "verbrauch_seit_betankung", "tagesverbrauch", "jahresverbrauch",
   "reichweite", "leer_am", "reserve_am", "bestellen_bis", "letzte_betankung",
 ];
 
@@ -37,6 +37,7 @@ const DEFAULTS = {
   alarm_prozent: 12,  // % der nutzbaren Füllung -> rot
   betankung: true,    // Betankungsformular anbieten
   verlauf: true,      // Restverlauf der kommenden Monate zeichnen
+  preisverlauf: true, // Preisentwicklung der eingetragenen Lieferungen
   wellen: true,       // Wellenanimation
 };
 
@@ -216,6 +217,23 @@ class LpgTankCard extends HTMLElement {
         .v-text { fill: var(--secondary-text-color); font-size: 10px; }
         .v-punkt { fill: var(--lpg-alarm); }
 
+        .abschnitt {
+          display: flex; justify-content: space-between; align-items: baseline;
+          font-size: .78rem; color: var(--secondary-text-color);
+          border-top: 1px solid var(--divider-color); padding-top: 10px;
+        }
+        #preisblock[hidden] { display: none; }
+        #preise { margin: 2px -4px 0; }
+        .p-linie { fill: none; stroke: var(--primary-color); stroke-width: 2.5;
+                   stroke-linejoin: round; stroke-linecap: round; }
+        .p-punkt { fill: var(--primary-color); }
+        .p-punkt-letzt { fill: var(--primary-color); stroke: var(--card-background-color);
+                         stroke-width: 2.5; }
+        .p-schnitt { stroke: var(--secondary-text-color); stroke-width: 1;
+                     stroke-dasharray: 4 4; opacity: .5; }
+        .p-text { fill: var(--secondary-text-color); font-size: 10px; }
+        .p-wert { fill: var(--primary-text-color); font-size: 11px; font-weight: 500; }
+
         .kacheln {
           display: grid; grid-template-columns: repeat(auto-fit, minmax(142px, 1fr)); gap: 8px;
         }
@@ -328,6 +346,15 @@ class LpgTankCard extends HTMLElement {
         <div class="unterschrift" id="t-liter">–</div>
         <svg id="verlauf" viewBox="0 0 420 96" role="img" aria-label="Restverlauf"></svg>
         <div class="kacheln" id="kacheln"></div>
+
+        <div id="preisblock" hidden>
+          <div class="abschnitt">
+            <span>Preisentwicklung</span>
+            <span id="preis-spanne"></span>
+          </div>
+          <svg id="preise" viewBox="0 0 420 104" role="img" aria-label="Preisentwicklung"></svg>
+        </div>
+
         <div class="fuss" id="fuss"></div>
 
         <div class="formular" id="formular" hidden>
@@ -383,7 +410,7 @@ class LpgTankCard extends HTMLElement {
     this._el = {};
     ["titel", "fehler", "grafik", "liquid", "w1", "w2", "t-prozent", "t-liter", "verlauf",
      "marke-max", "marke-max-text", "marke-reserve", "marke-reserve-text",
-     "kacheln", "fuss", "formular", "knopf-form",
+     "kacheln", "fuss", "formular", "knopf-form", "preisblock", "preise", "preis-spanne",
      "m-liefermenge", "m-tankuhr", "block-liefermenge", "block-tankuhr",
      "f-liter", "f-vorher", "f-preis", "f-prozent", "f-datum", "f-abbrechen", "f-speichern"]
       .forEach((id) => {
@@ -596,6 +623,7 @@ class LpgTankCard extends HTMLElement {
     const wert = zahl(this._zustand("restwert"), null);
     const proTag = zahl(this._zustand("tagesverbrauch"), null);
 
+    const reserveAm = this._datum("reserve_am");
     const kacheln = [
       { label: "Restenergie", wert: this._fmt(energie, 0, "kWh"),
         zusatz: wert !== null ? this._fmt(wert, 0, "EUR") : "", kennung: "restenergie" },
@@ -605,8 +633,12 @@ class LpgTankCard extends HTMLElement {
       { label: "Reichweite", wert: reichweite !== null ? this._fmt(reichweite, 0, "Tage") : "–",
         zusatz: reichweite !== null ? `≈ ${this._fmt(reichweite / 30.44, 1)} Monate` : "",
         kennung: "reichweite" },
+      { label: "Reserve erreicht", wert: this._datumText(reserveAm),
+        zusatz: this._inTagen(reserveAm), kennung: "reserve_am" },
       { label: "Voraussichtlich leer", wert: this._datumText(leerAm),
-        zusatz: leerAm ? this._wochentag(leerAm) : "", kennung: "leer_am" },
+        zusatz: this._inTagen(leerAm), kennung: "leer_am" },
+      { label: "Bestellen bis", wert: this._datumText(bestellen),
+        zusatz: this._inTagen(bestellen, "überfällig"), kennung: "bestellen_bis" },
     ];
 
     e.kacheln.innerHTML = kacheln.map((k, i) => `
@@ -628,13 +660,11 @@ class LpgTankCard extends HTMLElement {
       teile.push(`Letzte Betankung: ${this._datumText(this._parse(letzte.state))}` +
         (menge ? ` (${this._fmt(menge, 0, "L")})` : ""));
     }
-    if (bestellen) {
-      const tage = Math.round((bestellen - new Date()) / 86400000);
-      teile.push(tage <= 0
-        ? `Bestellung fällig (seit ${Math.abs(tage)} Tagen)`
-        : `Bestellen bis ${this._datumText(bestellen)}`);
-    }
+    const preis = zahl(this._zustand("gaspreis"), null);
+    if (preis !== null) teile.push(`Gaspreis: ${this._fmt(preis, 3, "EUR/L")}`);
     e.fuss.textContent = teile.join(" · ");
+
+    this._preisverlaufZeichnen(letzte);
   }
 
 
@@ -696,6 +726,68 @@ class LpgTankCard extends HTMLElement {
       <path class="v-flaeche" d="${flaeche}"/>
       <path class="v-linie" d="${linie}"/>
       ${reserveLinie}${leer}${labels}`;
+  }
+
+  /**
+   * Preisentwicklung aus der Lieferhistorie. Bewusst die tatsächlich bezahlten
+   * Preise und nicht der laufende Marktpreis – das ist die Reihe, die zeigt,
+   * ob man gut eingekauft hat.
+   */
+  _preisverlaufZeichnen(letzte) {
+    const block = this._el.preisblock;
+    const svg = this._el.preise;
+    if (!block || !svg) return;
+
+    const historie = (letzte && letzte.attributes && letzte.attributes.lieferungen) || [];
+    const punkte = historie
+      .filter((l) => l && l.preis_pro_liter != null && !isNaN(parseFloat(l.preis_pro_liter)))
+      .map((l) => ({ datum: this._parse(l.datum), preis: parseFloat(l.preis_pro_liter),
+                     liter: l.liter }))
+      .filter((l) => l.datum);
+
+    if (!this._config.preisverlauf || punkte.length < 2) { block.hidden = true; return; }
+    block.hidden = false;
+
+    const preise = punkte.map((p) => p.preis);
+    const min = Math.min(...preise), max = Math.max(...preise);
+    const spanne = Math.max(max - min, 0.01);
+    const B = 420, H = 104, l = 34, r = 8, o = 12, u = 20;
+    const x = (i) => l + (i / (punkte.length - 1)) * (B - l - r);
+    const y = (v) => o + (1 - (v - min + spanne * 0.15) / (spanne * 1.3)) * (H - o - u);
+
+    const linie = punkte.map((p, i) => `${i ? "L" : "M"} ${x(i).toFixed(1)},${y(p.preis).toFixed(1)}`).join(" ");
+    const schnitt = preise.reduce((a, b) => a + b, 0) / preise.length;
+
+    const dots = punkte.map((p, i) =>
+      `<circle class="${i === punkte.length - 1 ? "p-punkt-letzt" : "p-punkt"}" ` +
+      `cx="${x(i).toFixed(1)}" cy="${y(p.preis).toFixed(1)}" r="${i === punkte.length - 1 ? 4.5 : 3}">` +
+      `<title>${this._datumText(p.datum)}: ${this._fmt(p.preis, 3, "EUR/L")}` +
+      `${p.liter ? ` · ${this._fmt(p.liter, 0, "L")}` : ""}</title></circle>`).join("");
+
+    const beschriftung = punkte.map((p, i) => {
+      if (i !== 0 && i !== punkte.length - 1) return "";
+      const lang = (this._hass.locale && this._hass.locale.language) || "de";
+      return `<text class="p-text" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${
+        i === 0 ? "start" : "end"}">${p.datum.toLocaleDateString(lang,
+          { month: "2-digit", year: "2-digit" })}</text>`;
+    }).join("");
+
+    svg.innerHTML = `
+      <line class="p-schnitt" x1="${l}" y1="${y(schnitt).toFixed(1)}" x2="${B - r}" y2="${y(schnitt).toFixed(1)}"/>
+      <text class="p-text" x="${l - 4}" y="${(y(max) + 3).toFixed(1)}" text-anchor="end">${this._fmt(max, 2)}</text>
+      <text class="p-text" x="${l - 4}" y="${(y(min) + 3).toFixed(1)}" text-anchor="end">${this._fmt(min, 2)}</text>
+      <path class="p-linie" d="${linie}"/>${dots}${beschriftung}`;
+
+    this._el["preis-spanne"].textContent =
+      `${punkte.length} Lieferungen · Ø ${this._fmt(schnitt, 3, "EUR/L")}`;
+  }
+
+  /** "in 74 Tagen" bzw. "heute" / "überfällig seit 3 Tagen". */
+  _inTagen(d, ueberfaellig = "vorbei") {
+    if (!d) return "";
+    const tage = Math.round((d - new Date()) / 86400000);
+    if (tage === 0) return "heute";
+    return tage > 0 ? `in ${tage} Tagen` : `${ueberfaellig} seit ${Math.abs(tage)} Tagen`;
   }
 
   _wochentag(d) {

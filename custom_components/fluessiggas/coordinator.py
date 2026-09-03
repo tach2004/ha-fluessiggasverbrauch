@@ -35,6 +35,7 @@ from .const import (
     CONF_LITER_PER_M3,
     CONF_MAX_FILL,
     CONF_PRICE,
+    CONF_PRICE_ENTITY,
     CONF_PROFILE_YEARS,
     CONF_RESERVE,
     CONF_SOURCE_UNIT,
@@ -46,6 +47,8 @@ from .const import (
     DEFAULT_LITER_PER_M3,
     DEFAULT_MAX_FILL,
     DEFAULT_PRICE,
+    PRICE_UNITS_VOLUME,
+    PRICE_WRITABLE_DOMAINS,
     DEFAULT_PROFILE_YEARS,
     DEFAULT_RESERVE,
     STORAGE_KEY,
@@ -53,6 +56,7 @@ from .const import (
     STORE_BASELINE,
     STORE_DELIVERIES,
     STORE_LEVEL,
+    STORE_PRICE,
     STORE_REFERENCE_AT,
     UNIT_AUTO,
     UNIT_KWH,
@@ -90,6 +94,7 @@ class TankState:
     usable_capacity: float = 0.0
     energy_kwh: float = 0.0
     value_eur: float = 0.0
+    price: float = 0.0
     consumed_liters: float = 0.0
     consumed_units: float = 0.0
     per_day: float | None = None
@@ -118,6 +123,7 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         self._data: dict[str, Any] = {}
         self._profile: Profile | None = None
         self._profile_read: datetime | None = None
+        self._profile_task = None
         self._units: dict[str, str] = {}
         self._units_read: datetime | None = None
         self._gemeldet: set[str] = set()
@@ -152,8 +158,57 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         return float(self.option(CONF_KWH_PER_LITER, DEFAULT_KWH_PER_LITER))
 
     @property
+    def price_entity(self) -> str | None:
+        """Optionaler vorhandener Preis-Helfer in Home Assistant."""
+        return self.option(CONF_PRICE_ENTITY, None) or None
+
+    @property
     def price(self) -> float:
-        return float(self.option(CONF_PRICE, DEFAULT_PRICE))
+        """Gaspreis in EUR je Liter – immer in Litern, egal wo er herkommt."""
+        if (entity_id := self.price_entity) and (zustand := self.hass.states.get(entity_id)):
+            try:
+                wert = float(zustand.state)
+            except (TypeError, ValueError):
+                wert = None
+            if wert is not None:
+                return wert / self.liter_per_m3 if self._price_is_volume(zustand) else wert
+        return float(self._data.get(STORE_PRICE, self.option(CONF_PRICE, DEFAULT_PRICE)))
+
+    def _price_is_volume(self, zustand: Any) -> bool:
+        """Steht der fremde Preis je m³ statt je Liter?"""
+        einheit = (zustand.attributes.get("unit_of_measurement") or "").strip().lower()
+        return any(marke in einheit for marke in PRICE_UNITS_VOLUME)
+
+    async def async_set_price(self, price_per_liter: float) -> None:
+        """Gaspreis setzen – bevorzugt dorthin, wo er herkommt.
+
+        Ist ein eigener Helfer konfiguriert und beschreibbar, wird er
+        aktualisiert (bei Bedarf zurück nach EUR/m³ gerechnet). Sonst merkt
+        sich die Integration den Preis selbst.
+        """
+        preis = max(float(price_per_liter), 0.0)
+        entity_id = self.price_entity
+        if entity_id and entity_id.split(".")[0] in PRICE_WRITABLE_DOMAINS:
+            zustand = self.hass.states.get(entity_id)
+            wert = preis * self.liter_per_m3 if (
+                zustand is not None and self._price_is_volume(zustand)
+            ) else preis
+            await self.hass.services.async_call(
+                entity_id.split(".")[0], "set_value",
+                {"entity_id": entity_id, "value": round(wert, 4)}, blocking=True,
+            )
+        elif entity_id:
+            # Ein Sensor lässt sich nicht setzen. Intern merken wäre sinnlos,
+            # weil der Sensor als Quelle immer Vorrang hat.
+            _LOGGER.warning(
+                "%s ist nicht beschreibbar; der Preis %.3f EUR/L aus der Betankung "
+                "wurde nur in der Lieferhistorie festgehalten",
+                entity_id, preis,
+            )
+        else:
+            self._data[STORE_PRICE] = round(preis, 4)
+            await self._async_save()
+        await self.async_request_refresh()
 
     @property
     def reserve(self) -> float:
@@ -383,21 +438,13 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         referenz = float(self._data.get(STORE_LEVEL, 0.0))
         stand = min(max(referenz - verbrauch_liter, 0.0), self.usable_capacity)
 
-        # Profil höchstens alle paar Stunden neu lesen
-        jetzt = dt_util.utcnow()
-        if self._profile is None or self._profile_read is None or (
-            jetzt - self._profile_read
-        ) > PROFILE_INTERVAL:
-            try:
-                self._profile = await self._async_read_profile()
-            except Exception:
-                _LOGGER.warning(
-                    "Monatsprofil konnte nicht aus der Statistik gelesen werden; "
-                    "es wird vorerst geschätzt", exc_info=True,
-                )
-                if self._profile is None:
-                    self._profile = build_profile({}, self.profile_years, dt_util.now().date())
-            self._profile_read = jetzt
+        # Das Monatsprofil ist die teure Abfrage: mehrere Jahre Statistik über
+        # alle Quellen. Sie läuft deshalb nie im Aktualisierungspfad, sondern
+        # nebenher – sonst hängt die Einrichtung der Integration daran, und mit
+        # ihr die Anmeldung der Karte.
+        if self._profile is None:
+            self._profile = build_profile({}, self.profile_years, dt_util.now().date())
+        self._profil_anfordern()
 
         referenz_zeit = self._reference_at()
         tage = (
@@ -413,6 +460,7 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             usable_capacity=round(self.usable_capacity, 1),
             energy_kwh=round(stand * self.kwh_per_liter),
             value_eur=round(stand * self.price, 2),
+            price=round(self.price, 4),
             consumed_liters=round(verbrauch_liter, 1),
             consumed_units=round(verbrauch_einheiten, 3),
             per_day=round(verbrauch_liter / tage, 2) if tage >= 1 else None,
@@ -430,6 +478,32 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             last_delivery=self.deliveries[-1] if self.deliveries else None,
             missing_sources=fehlend,
         )
+
+    def _profil_anfordern(self) -> None:
+        """Das Monatsprofil bei Bedarf im Hintergrund nachladen."""
+        jetzt = dt_util.utcnow()
+        if self._profile_read and (jetzt - self._profile_read) <= PROFILE_INTERVAL:
+            return
+        if self._profile_task and not self._profile_task.done():
+            return
+        self._profile_task = self.entry.async_create_background_task(
+            self.hass, self._async_profil_laden(), name=f"{self.entry.title} Monatsprofil"
+        )
+
+    async def _async_profil_laden(self) -> None:
+        try:
+            profil = await self._async_read_profile()
+        except Exception:
+            _LOGGER.warning(
+                "Monatsprofil konnte nicht aus der Statistik gelesen werden; "
+                "es wird vorerst geschätzt", exc_info=True,
+            )
+            # nicht sofort erneut versuchen, sonst läuft es bei jedem Durchlauf
+            self._profile_read = dt_util.utcnow()
+            return
+        self._profile = profil
+        self._profile_read = dt_util.utcnow()
+        await self.async_request_refresh()
 
     def _reference_at(self) -> datetime | None:
         roh = self._data.get(STORE_REFERENCE_AT)
@@ -538,6 +612,9 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         self._data[STORE_BASELINE] = summen
         self._data[STORE_REFERENCE_AT] = zeitpunkt.isoformat()
         await self._async_save()
+
+        if price is not None:
+            await self.async_set_price(float(price))
 
         if faktor_neu is not None:
             _LOGGER.info(

@@ -27,7 +27,8 @@
           "reserve": "Reserve",
           "lead_time": "Delivery lead time",
           "profile_years": "Averaging over years",
-          "correction": "Forecast correction factor"
+          "correction": "Forecast correction factor",
+          "price_entity": "Existing price helper"
         },
         "data_description": {
           "liter_per_m3": "Propane at standard conditions: about 3.92. Calibrated automatically on the first refill if you enter the gauge reading beforehand.",
@@ -36,7 +37,8 @@
           "reserve": "Below this amount the tank counts as empty – basis for the ordering deadline.",
           "lead_time": "How long it takes from ordering to the tanker arriving.",
           "profile_years": "Over how many years the consumption per calendar month is averaged.",
-          "correction": "Scales the entire forecast – useful after insulation work or a rebuild."
+          "correction": "Scales the entire forecast – useful after insulation work or a rebuild.",
+          "price_entity": "Optional. An input_number or sensor that already holds your gas price. If it is in EUR/m³ the integration converts to litres and writes a price entered on refill back into it. Leave empty and the integration provides its own “Gas price” number."
         }
       }
     },
@@ -60,7 +62,8 @@
           "reserve": "Reserve",
           "lead_time": "Delivery lead time",
           "profile_years": "Averaging over years",
-          "correction": "Forecast correction factor"
+          "correction": "Forecast correction factor",
+          "price_entity": "Existing price helper"
         },
         "data_description": {
           "sources": "The cumulative counters of your heating system, e.g. heating gas and domestic hot water gas. Multiple sensors are added up.",
@@ -73,7 +76,8 @@
           "reserve": "Below this amount the tank counts as empty – basis for the ordering deadline.",
           "lead_time": "How long it takes from ordering to the tanker arriving.",
           "profile_years": "Over how many years the consumption per calendar month is averaged.",
-          "correction": "Scales the entire forecast – useful after insulation work or a rebuild."
+          "correction": "Scales the entire forecast – useful after insulation work or a rebuild.",
+          "price_entity": "Optional. An input_number or sensor that already holds your gas price. If it is in EUR/m³ the integration converts to litres and writes a price entered on refill back into it. Leave empty and the integration provides its own “Gas price” number."
         }
       }
     },
@@ -131,6 +135,14 @@
       },
       "letzte_betankung": {
         "name": "Last refill"
+      },
+      "gaspreis": {
+        "name": "Gas price"
+      }
+    },
+    "number": {
+      "gaspreis": {
+        "name": "Gas price"
       }
     }
   },
