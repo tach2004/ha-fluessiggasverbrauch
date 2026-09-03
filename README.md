@@ -14,6 +14,11 @@ der Tankuhr wird er wieder auf die Realität gesetzt.
 
 ### Über HACS (empfohlen)
 
+> HACS lädt die Dateien ohne Token von `raw.githubusercontent.com` – das
+> **Repository muss dafür öffentlich sein**. Ist es privat, meldet HACS
+> `No manifest.json file found 'custom_components/None/manifest.json'`;
+> dann bleibt der Weg von Hand.
+
 1. HACS → ⋮ → **Benutzerdefinierte Repositories** → `https://github.com/tach2004/ha-fluessiggasverbrauch`, Kategorie **Integration**.
 2. „Flüssiggastank" herunterladen, Home Assistant neu starten.
 3. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Flüssiggastank**.

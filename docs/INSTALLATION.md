@@ -2,6 +2,13 @@
 
 ## 1. Integration installieren
 
+> **Das Repository muss öffentlich sein.** HACS lädt jede Datei über
+> `raw.githubusercontent.com` – ohne Token. Bei einem privaten Repository
+> schlägt das für jede Datei fehl, und HACS meldet als Erstes:
+> `No manifest.json file found 'custom_components/None/manifest.json'`.
+> Die Domain ist dabei nicht kaputt, HACS kann den Verzeichnisbaum nur nicht
+> lesen. Wer privat bleiben will, installiert von Hand (siehe unten).
+
 ### HACS
 
 HACS → ⋮ → **Benutzerdefinierte Repositories**:
@@ -15,6 +22,9 @@ Dann „Flüssiggastank" herunterladen und Home Assistant neu starten.
 
 ### Von Hand
 
+Funktioniert auch bei einem privaten Repository und ist der Weg für Updates,
+solange es privat bleibt.
+
 ```bash
 cd /config
 git clone https://github.com/tach2004/ha-fluessiggasverbrauch.git .gastank
@@ -22,7 +32,20 @@ mkdir -p custom_components
 cp -r .gastank/custom_components/fluessiggas custom_components/
 ```
 
-Neu starten. Für Updates: `git -C /config/.gastank pull` und erneut kopieren.
+Neu starten. Für ein Update:
+
+```bash
+git -C /config/.gastank pull
+rm -rf /config/custom_components/fluessiggas
+cp -r /config/.gastank/custom_components/fluessiggas /config/custom_components/
+```
+
+Das Löschen vor dem Kopieren ist wichtig, sonst bleiben Dateien liegen, die es
+in der neuen Version nicht mehr gibt. Danach Home Assistant neu starten und im
+Browser einmal Strg+F5 drücken, damit die neue Kartenversion geladen wird.
+
+Die Einstellungen und der Füllstand überstehen das: Sie liegen in
+`.storage`, nicht im Integrationsordner.
 
 ## 2. Tank anlegen
 
@@ -140,6 +163,7 @@ sonst passiert das alle sechs Stunden von allein.
 | Füllstand sinkt zu schnell | Faktor L/m³ – bei der nächsten Betankung die Tankuhr vorher angeben. |
 | Reichweite `unknown` | Rechnerisch mehr als sechs Jahre, oder Jahresverbrauch 0. |
 | Karte nicht im Picker | Direkt nach der Ersteinrichtung: einmal Strg+F5. Home Assistant baut die Liste der Zusatzmodule beim Ausliefern der Seite ins HTML – eine bereits offene Seite kennt die Karte noch nicht. |
+| HACS: `custom_components/None/manifest.json` | Das Repository ist privat. HACS unterstützt nur öffentliche Repositories – öffentlich schalten oder von Hand installieren. |
 | „custom element doesn't exist" nach HA-Neustart | Sollte seit 1.1.0 nicht mehr auftreten. Falls doch: Strg+F5, und prüfen, ob die Integration überhaupt geladen ist. |
 | „Keine Integration gefunden" | Der Tank ist noch nicht eingerichtet. |
 | Meldung „Statistiksumme gesunken" | Die Statistik der Quelle wurde gelöscht oder neu aufgebaut; die Integration setzt den Bezugspunkt nach. Danach den Füllstand einmal korrigieren. |
