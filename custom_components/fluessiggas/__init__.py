@@ -10,6 +10,7 @@ import voluptuous as vol
 
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.lovelace import LOVELACE_DATA, MODE_STORAGE
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -34,6 +35,7 @@ from .const import (
     CARD_URL,
     DOMAIN,
     SERVICE_DELIVERY,
+    SERVICE_ADD_HISTORY,
     SERVICE_REFRESH_PROFILE,
     SERVICE_SET_LEVEL,
     VERSION,
@@ -44,6 +46,8 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.NUMBER, Platform.SENSOR]
 KARTE_REGISTRIERT = f"{DOMAIN}_karte"
+#: Versionsanhang, damit ein Update den Browser-Cache umgeht
+KARTE_RESSOURCE = f"{CARD_URL}?v={VERSION}"
 
 
 def _dienst_schema(felder: dict) -> vol.Schema:
@@ -64,6 +68,14 @@ DELIVERY_FIELDS = (
         vol.Optional(ATTR_PRICE): vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
         vol.Optional(ATTR_DATE): cv.date,
         vol.Optional(ATTR_CALIBRATE, default=True): cv.boolean,
+    }
+)
+
+ADD_HISTORY_FIELDS = (
+    {
+        vol.Required(ATTR_DATE): cv.date,
+        vol.Optional(ATTR_LITERS): vol.All(vol.Coerce(float), vol.Range(min=0, max=50000)),
+        vol.Optional(ATTR_PRICE): vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
     }
 )
 
@@ -101,6 +113,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TankConfigEntry) -> bool
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
+    coordinator.async_track_price_source()
     _async_register_services(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -111,6 +124,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: TankConfigEntry) -> bool
 async def async_unload_entry(hass: HomeAssistant, entry: TankConfigEntry) -> bool:
     """Tank wieder abbauen."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: TankConfigEntry) -> None:
+    """Beim Entfernen des letzten Tanks die Lovelace-Ressource mitnehmen."""
+    if hass.config_entries.async_entries(DOMAIN):
+        return
+    await _async_remove_resource(hass)
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: TankConfigEntry) -> None:
@@ -129,16 +149,76 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     hass.data[KARTE_REGISTRIERT] = True
 
     pfad = Path(__file__).parent / "frontend" / CARD_FILENAME
-    if not pfad.is_file():
+    # Dateizugriff gehört nicht in den Event-Loop
+    if not await hass.async_add_executor_job(pfad.is_file):
         _LOGGER.warning("Karte %s nicht gefunden – sie wird nicht eingebunden", pfad)
         return
 
     await hass.http.async_register_static_paths(
         [StaticPathConfig(CARD_URL, str(pfad), cache_headers=False)]
     )
-    # Versionsanhang, damit Browser nach einem Update nicht die alte Datei zeigen
-    add_extra_js_url(hass, f"{CARD_URL}?v={VERSION}")
-    _LOGGER.debug("Lovelace-Karte unter %s eingebunden", CARD_URL)
+    add_extra_js_url(hass, KARTE_RESSOURCE)
+    await _async_register_resource(hass)
+    _LOGGER.debug("Lovelace-Karte unter %s eingebunden", KARTE_RESSOURCE)
+
+
+async def _async_register_resource(hass: HomeAssistant) -> None:
+    """Die Karte zusätzlich als Lovelace-Ressource eintragen.
+
+    add_extra_js_url allein genügt nicht: Der Service Worker des Frontends
+    liefert jede Seite mit StaleWhileRevalidate aus einem 24-Stunden-Cache
+    ("First access might bring stale data from cache"), und über HTTPS ist er
+    aktiv. Ein in das HTML gebackenes Skript-Tag fehlt deshalb so lange, bis
+    der Cache nachzieht – die Karte meldet "custom element doesn't exist",
+    beim nächsten Laden geht es, beim übernächsten wieder nicht.
+
+    Die Ressourcenliste holt das Frontend dagegen über den Websocket, und
+    /api/* ist im Service Worker als NetworkOnly registriert. Sie ist damit
+    immer aktuell. Beide Wege zeigen auf dieselbe URL, das Modul wird also
+    trotzdem nur einmal geladen.
+    """
+    if (lovelace := hass.data.get(LOVELACE_DATA)) is None:
+        return
+    if lovelace.resource_mode != MODE_STORAGE:
+        _LOGGER.info(
+            "Lovelace läuft im YAML-Modus. Bitte '%s' von Hand als Ressource "
+            "vom Typ 'module' eintragen",
+            KARTE_RESSOURCE,
+        )
+        return
+
+    ressourcen = lovelace.resources
+    await ressourcen.async_get_info()
+    for eintrag in ressourcen.async_items():
+        if not str(eintrag.get("url", "")).startswith(CARD_URL):
+            continue
+        if eintrag.get("url") != KARTE_RESSOURCE:
+            await ressourcen.async_update_item(
+                eintrag["id"], {"res_type": "module", "url": KARTE_RESSOURCE}
+            )
+            _LOGGER.info("Lovelace-Ressource auf %s aktualisiert", KARTE_RESSOURCE)
+        return
+
+    await ressourcen.async_create_item({"res_type": "module", "url": KARTE_RESSOURCE})
+    _LOGGER.info("Lovelace-Ressource %s angelegt", KARTE_RESSOURCE)
+
+
+async def _async_remove_resource(hass: HomeAssistant) -> None:
+    """Ressource entfernen, wenn der letzte Tank gelöscht wird.
+
+    Bliebe sie stehen, zeigte sie nach der Deinstallation ins Leere – und eine
+    tote Ressource kann die Kartenauswahl im Dashboard blockieren.
+    """
+    if (lovelace := hass.data.get(LOVELACE_DATA)) is None:
+        return
+    if lovelace.resource_mode != MODE_STORAGE:
+        return
+    ressourcen = lovelace.resources
+    await ressourcen.async_get_info()
+    for eintrag in list(ressourcen.async_items()):
+        if str(eintrag.get("url", "")).startswith(CARD_URL):
+            await ressourcen.async_delete_item(eintrag["id"])
+            _LOGGER.debug("Lovelace-Ressource %s entfernt", eintrag.get("url"))
 
 
 def _async_register_services(hass: HomeAssistant) -> None:
@@ -219,6 +299,17 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 liters=call.data.get(ATTR_LITERS),
             )
 
+    async def lieferung_nachtragen(call: ServiceCall) -> None:
+        datum = dt_util.as_utc(
+            dt_util.start_of_local_day(call.data[ATTR_DATE]) + timedelta(hours=12)
+        )
+        for coordinator in await _coordinators(call):
+            await coordinator.async_add_history(
+                moment=datum,
+                liters=call.data.get(ATTR_LITERS),
+                price=call.data.get(ATTR_PRICE),
+            )
+
     async def profil_neu_berechnen(call: ServiceCall) -> None:
         for coordinator in await _coordinators(call):
             await coordinator.async_refresh_profile()
@@ -229,6 +320,10 @@ def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_SET_LEVEL, fuellstand_setzen,
         schema=_dienst_schema(SET_LEVEL_FIELDS),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_ADD_HISTORY, lieferung_nachtragen,
+        schema=_dienst_schema(ADD_HISTORY_FIELDS),
     )
     hass.services.async_register(
         DOMAIN, SERVICE_REFRESH_PROFILE, profil_neu_berechnen,

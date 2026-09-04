@@ -24,7 +24,9 @@ Ordner `custom_components/fluessiggas` nach `<config>/custom_components/`
 kopieren und neu starten.
 
 Die Lovelace-Karte bringt die Integration mit und meldet sie selbst an – ein
-Eintrag unter *Dashboards → Ressourcen* ist **nicht** nötig.
+Eintrag unter *Dashboards → Ressourcen* ist **nicht** nötig. Sie trägt sich
+dafür als Ressource ein und entfernt den Eintrag wieder, wenn der letzte Tank
+gelöscht wird.
 
 ## Einrichtung
 
@@ -94,6 +96,7 @@ Konfiguration einen eigenen Preis-Helfer angegeben, dann bleibt deiner die Quell
 |---|---|
 | `fluessiggas.betankung` | Lieferung eintragen – auch eine Teilbetankung |
 | `fluessiggas.fuellstand_setzen` | Tankuhr abgelesen, Zählung neu starten |
+| `fluessiggas.lieferung_nachtragen` | Zurückliegende Lieferung nur in die Historie schreiben |
 | `fluessiggas.profil_neu_berechnen` | Monatsprofil sofort neu aus der Statistik lesen |
 
 ### Teilbetankung
@@ -110,22 +113,45 @@ Angaben, alle optional kombinierbar:
 `datum` trägt eine Betankung auch nachträglich ein: Die Integration holt sich
 die Statistiksumme von genau diesem Tag, der Verbrauch danach bleibt korrekt.
 
+### Alte Lieferungen nachtragen
+
+Für den Preisverlauf möchte man oft Lieferungen von früher eintragen. Dafür gibt
+es `fluessiggas.lieferung_nachtragen` mit Datum, Liefermenge und Preis: Der
+Eintrag landet **nur** in der Historie, Füllstand und Bezugspunkt bleiben
+unangetastet. `betankung` mit altem Datum würde dagegen den aktuellen Stand neu
+berechnen – zum Nachtragen ist sie deshalb der falsche Dienst.
+
+In der Karte sitzt das als dritter Reiter im Betankungsformular:
+**Getankt · Tankuhr · Nachtragen**.
+
 ## Gaspreis
 
 Der Preis ist immer **EUR je Liter** – in der Anzeige wie in der Eingabe.
 
-* **Ohne eigenen Helfer** legt die Integration die Zahl *Gaspreis* an. Anders als
-  eine `input_number` ist der zugehörige Sensor mit `state_class: measurement`
-  ausgestattet und landet damit in der Langzeitstatistik: Der Preisverlauf
-  bleibt über Jahre erhalten.
+* **Ohne eigenen Helfer** legt die Integration die Zahl *Gaspreis* an.
 * **Mit eigenem Helfer** (Feld *Vorhandener Preis-Helfer*) bleibt deine
   `input_number` die Quelle. Steht sie in EUR/m³, rechnet die Integration mit dem
   konfigurierten Faktor selbst in Liter um.
 
-Trägst du beim Tanken einen Preis ein, wird er übernommen: in den eigenen
-Helfer zurückgeschrieben, wenn er beschreibbar ist, sonst intern gemerkt. Jede
-Lieferung landet mit Datum, Menge, Preis und Kosten in der Historie – daraus
-zeichnet die Karte die Preisentwicklung.
+> Der Helfer muss eine **beschreibbare Zahl** sein – eine `input_number` oder
+> eine `number`-Entität. Ein **Template-Sensor funktioniert nicht**: Der
+> berechnet sich selbst, lässt sich nicht setzen, und ein beim Tanken
+> eingegebener Preis liefe dort ins Leere. Die Auswahl im Einrichtungsdialog
+> zeigt deshalb nur die beiden zulässigen Domains an.
+
+In beiden Fällen gibt es zusätzlich den **Sensor** *Gaspreis* mit
+`state_class: measurement`. Anders als eine `input_number` landet der in der
+Langzeitstatistik – der Preisverlauf bleibt damit über Jahre erhalten.
+
+Änderst du deinen Helfer von Hand, folgt die Integration **sofort**: Sie hört
+auf die Entität, statt auf den nächsten Durchlauf zu warten. Preis-Sensor und
+Restwert sind unmittelbar aktuell.
+
+Trägst du beim Tanken einen Preis ein, wird er in den Helfer zurückgeschrieben.
+Jede Lieferung landet mit Datum, Menge, Preis und Kosten in der Historie – und
+zwar als **fester Schnappschuss**: Der Preis einer vergangenen Lieferung ändert
+sich nie mehr, auch wenn der aktuelle Gaspreis später steigt oder fällt. Genau
+das macht die Preisentwicklung in der Karte aussagekräftig.
 
 ## Wie die Prognose rechnet
 

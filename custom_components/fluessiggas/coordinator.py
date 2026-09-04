@@ -22,7 +22,8 @@ from homeassistant.components.recorder.statistics import (
     statistics_during_period,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -178,6 +179,29 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         """Steht der fremde Preis je m³ statt je Liter?"""
         einheit = (zustand.attributes.get("unit_of_measurement") or "").strip().lower()
         return any(marke in einheit for marke in PRICE_UNITS_VOLUME)
+
+    @callback
+    def async_track_price_source(self) -> None:
+        """Auf Änderungen des fremden Preis-Helfers sofort reagieren.
+
+        Ohne das würde ein von Hand geänderter Preis erst beim nächsten
+        Durchlauf sichtbar – also bis zu fünf Minuten später.
+        """
+        if not (entity_id := self.price_entity):
+            return
+        self.entry.async_on_unload(
+            async_track_state_change_event(
+                self.hass, [entity_id], self._async_price_source_changed
+            )
+        )
+
+    @callback
+    def _async_price_source_changed(self, event: Event[EventStateChangedData]) -> None:
+        alt = event.data.get("old_state")
+        neu = event.data.get("new_state")
+        if neu is None or (alt is not None and alt.state == neu.state):
+            return
+        self.hass.async_create_task(self.async_request_refresh())
 
     async def async_set_price(self, price_per_liter: float) -> None:
         """Gaspreis setzen – bevorzugt dorthin, wo er herkommt.
@@ -627,6 +651,40 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             self.hass.config_entries.async_update_entry(self.entry, options=optionen)
         else:
             await self.async_request_refresh()
+        return eintrag
+
+    async def async_add_history(
+        self,
+        *,
+        moment: datetime,
+        liters: float | None = None,
+        price: float | None = None,
+    ) -> dict[str, Any]:
+        """Eine zurückliegende Lieferung nur in die Historie schreiben.
+
+        Bewusst getrennt von async_register_delivery: Diese setzt den
+        Referenzstand und den Bezugspunkt neu. Wer alte Lieferungen für den
+        Preisverlauf nachträgt, würde sich damit den aktuellen Füllstand
+        zerlegen. Hier bleibt beides unangetastet.
+        """
+        eintrag = {
+            "datum": dt_util.as_local(moment).date().isoformat(),
+            "liter": round(float(liters), 1) if liters is not None else None,
+            "stand_vorher": None,
+            "stand_nachher": None,
+            "preis_pro_liter": round(float(price), 4) if price is not None else None,
+            "kosten": round(float(liters) * float(price), 2)
+            if liters is not None and price is not None
+            else None,
+            "nachgetragen": True,
+        }
+        lieferungen = self.deliveries + [eintrag]
+        # nach Datum sortieren, damit der Preisverlauf chronologisch bleibt und
+        # "Letzte Betankung" weiterhin die jüngste ist
+        lieferungen.sort(key=lambda e: str(e.get("datum") or ""))
+        self._data[STORE_DELIVERIES] = lieferungen[-MAX_DELIVERIES:]
+        await self._async_save()
+        await self.async_request_refresh()
         return eintrag
 
     async def async_refresh_profile(self) -> Profile:

@@ -14,5 +14,8 @@
   "integration_type": "service",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/tach2004/ha-fluessiggasverbrauch/issues",
-  "version": "1.1.0"
+  "version": "1.2.0",
+  "after_dependencies": [
+    "lovelace"
+  ]
 }

@@ -57,6 +57,7 @@ STORE_PRICE: Final = "price"
 SERVICE_DELIVERY: Final = "betankung"
 SERVICE_SET_LEVEL: Final = "fuellstand_setzen"
 SERVICE_REFRESH_PROFILE: Final = "profil_neu_berechnen"
+SERVICE_ADD_HISTORY: Final = "lieferung_nachtragen"
 
 ATTR_LITERS: Final = "liter"
 ATTR_LEVEL_BEFORE: Final = "fuellstand_vorher_prozent"
@@ -75,4 +76,4 @@ PRICE_UNITS_VOLUME: Final = ("m³", "m3", "eur/m³", "eur/m3", "€/m³", "€/m
 #: Domains, in die die Integration einen Preis zurückschreiben darf
 PRICE_WRITABLE_DOMAINS: Final = ("input_number", "number")
 
-VERSION: Final = "1.1.0"
+VERSION: Final = "1.2.0"

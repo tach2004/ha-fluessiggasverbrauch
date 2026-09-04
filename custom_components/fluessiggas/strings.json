@@ -28,7 +28,7 @@
           "lead_time": "Delivery lead time",
           "profile_years": "Averaging over years",
           "correction": "Forecast correction factor",
-          "price_entity": "Existing price helper"
+          "price_entity": "Existing price helper (input_number)"
         },
         "data_description": {
           "liter_per_m3": "Propane at standard conditions: about 3.92. Calibrated automatically on the first refill if you enter the gauge reading beforehand.",
@@ -38,7 +38,7 @@
           "lead_time": "How long it takes from ordering to the tanker arriving.",
           "profile_years": "Over how many years the consumption per calendar month is averaged.",
           "correction": "Scales the entire forecast – useful after insulation work or a rebuild.",
-          "price_entity": "Optional. An input_number or sensor that already holds your gas price. If it is in EUR/m³ the integration converts to litres and writes a price entered on refill back into it. Leave empty and the integration provides its own “Gas price” number."
+          "price_entity": "Optional. Only a writable number – an input_number or number entity you set yourself. A template sensor explicitly does not work: it computes itself and cannot be written back. If the helper is in EUR/m³ the integration converts to litres. Change it by hand and the integration follows immediately; a price entered on refill is written back into it. Leave empty and the integration provides its own “Gas price” number."
         }
       }
     },
@@ -63,7 +63,7 @@
           "lead_time": "Delivery lead time",
           "profile_years": "Averaging over years",
           "correction": "Forecast correction factor",
-          "price_entity": "Existing price helper"
+          "price_entity": "Existing price helper (input_number)"
         },
         "data_description": {
           "sources": "The cumulative counters of your heating system, e.g. heating gas and domestic hot water gas. Multiple sensors are added up.",
@@ -77,7 +77,7 @@
           "lead_time": "How long it takes from ordering to the tanker arriving.",
           "profile_years": "Over how many years the consumption per calendar month is averaged.",
           "correction": "Scales the entire forecast – useful after insulation work or a rebuild.",
-          "price_entity": "Optional. An input_number or sensor that already holds your gas price. If it is in EUR/m³ the integration converts to litres and writes a price entered on refill back into it. Leave empty and the integration provides its own “Gas price” number."
+          "price_entity": "Optional. Only a writable number – an input_number or number entity you set yourself. A template sensor explicitly does not work: it computes itself and cannot be written back. If the helper is in EUR/m³ the integration converts to litres. Change it by hand and the integration follows immediately; a price entered on refill is written back into it. Leave empty and the integration provides its own “Gas price” number."
         }
       }
     },
@@ -188,6 +188,24 @@
         "liter": {
           "name": "Litres",
           "description": "Alternatively the level directly in litres."
+        }
+      }
+    },
+    "lieferung_nachtragen": {
+      "name": "Add past delivery",
+      "description": "Records a past delivery in the history only – for the price trend. Level and reference point stay untouched, unlike “Register refill”.",
+      "fields": {
+        "datum": {
+          "name": "Date",
+          "description": "When the delivery took place."
+        },
+        "liter": {
+          "name": "Delivered amount",
+          "description": "Optional, for the cost calculation."
+        },
+        "preis_pro_liter": {
+          "name": "Price per litre",
+          "description": "The price paid back then, in EUR/L."
         }
       }
     },

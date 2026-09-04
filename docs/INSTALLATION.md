@@ -55,7 +55,7 @@ bereits herausgerechnet hat.
 | Liter je m³ Gas | 3,92 | Propan im Normzustand. Wird bei der ersten Betankung automatisch nachkalibriert. |
 | Energieinhalt je Liter | 7,0 kWh | Heizwert 6,57 – Brennwert 7,11. |
 | Gaspreis je Liter | – | Startwert in EUR/L. |
-| Vorhandener Preis-Helfer | leer | Optional. Deine bestehende `input_number` mit dem Gaspreis. Steht sie in EUR/m³, wird selbst umgerechnet. Leer lassen → die Integration legt eine eigene Zahl an. |
+| Vorhandener Preis-Helfer | leer | Optional, und **nur eine `input_number` oder `number`** – kein Template-Sensor (siehe Schritt 6). Steht der Helfer in EUR/m³, wird selbst umgerechnet. Leer lassen → die Integration legt eine eigene Zahl an. |
 | Reserve | 970 L | 20 % vom Nennvolumen. Ab hier gilt der Tank als leer. |
 | Vorlaufzeit | 21 d | Zeit vom Bestellen bis zum Tankwagen. |
 | Mittelung über Jahre | 2 | Über wie viele Jahre je Kalendermonat gemittelt wird. |
@@ -104,6 +104,11 @@ In der Karte aufs Zapfsäulen-Symbol, oder als Dienst `fluessiggas.betankung`:
 | Nachträglich | zusätzlich `datum: 2026-08-14` |
 | Mit Preis | zusätzlich `preis_pro_liter: 0.677` |
 
+**Alte Lieferungen nachtragen** (für den Preisverlauf) ist etwas anderes: dafür
+den Reiter *Nachtragen* bzw. den Dienst `fluessiggas.lieferung_nachtragen` mit
+Datum, Menge und Preis nehmen. Der schreibt nur in die Historie. `betankung` mit
+altem Datum würde stattdessen den aktuellen Füllstand neu berechnen.
+
 Die Kalibrierung lohnt sich: Sie vergleicht den abgelesenen Verbrauch mit den
 gezählten m³ und schreibt den echten Faktor zurück. Danach stimmt die Rechnung
 für deine Anlage statt für die Norm.
@@ -118,9 +123,27 @@ Der Preis ist überall in **EUR je Liter**.
 * Sonst legt die Integration die Zahl **Gaspreis** an, die du direkt im
   Dashboard ändern kannst.
 
+> **Nur eine beschreibbare Zahl.** Zulässig sind `input_number` und `number` –
+> also Entitäten, in die man einen Wert eintragen kann. Ein **Template-Sensor
+> ist nicht zulässig**, auch wenn er den Preis anzeigt: Er berechnet sich aus
+> seiner Vorlage, lässt sich nicht setzen, und ein beim Tanken eingegebener
+> Preis hätte nirgends hin. Die Auswahl im Dialog bietet deshalb nur die beiden
+> zulässigen Domains an.
+>
+> Wer einen abgeleiteten Sensor in EUR/m³ betreibt (etwa fürs Energiedashboard),
+> trägt hier die **input_number dahinter** ein, nicht den Sensor. Der Sensor
+> folgt dann automatisch, weil er von ihr abgeleitet ist – und behält seine
+> Entity-ID samt Langzeitstatistik.
+
+Änderst du den Helfer von Hand, folgt die Integration sofort – sie hört auf die
+Entität, statt auf den nächsten Durchlauf zu warten.
+
 In beiden Fällen gibt es zusätzlich den Sensor *Gaspreis* mit
 Langzeitstatistik. Der ist der Grund, warum sich der Preisverlauf über Jahre
 darstellen lässt – eine `input_number` allein kann das nicht.
+
+Der Preis einer bereits eingetragenen Lieferung ist ein fester Schnappschuss und
+ändert sich nie mehr, egal wie sich der aktuelle Gaspreis danach entwickelt.
 
 ## 7. Monatsprofil prüfen
 
@@ -139,7 +162,6 @@ sonst passiert das alle sechs Stunden von allein.
 | Füllstand sinkt nicht | Falscher Quellsensor – prüfe, ob *Verbrauch seit Betankung* steigt. |
 | Füllstand sinkt zu schnell | Faktor L/m³ – bei der nächsten Betankung die Tankuhr vorher angeben. |
 | Reichweite `unknown` | Rechnerisch mehr als sechs Jahre, oder Jahresverbrauch 0. |
-| Karte nicht im Picker | Direkt nach der Ersteinrichtung: einmal Strg+F5. Home Assistant baut die Liste der Zusatzmodule beim Ausliefern der Seite ins HTML – eine bereits offene Seite kennt die Karte noch nicht. |
-| „custom element doesn't exist" nach HA-Neustart | Sollte seit 1.1.0 nicht mehr auftreten. Falls doch: Strg+F5, und prüfen, ob die Integration überhaupt geladen ist. |
+| Karte nicht im Picker, „custom element doesn't exist" | Einmalig nach dem Update auf 1.2.0: Der Service Worker des Frontends liefert Seiten aus einem 24-Stunden-Cache. In der Companion-App *Einstellungen → Companion App → Frontend-Cache zurücksetzen*, im Browser Strg+F5 bzw. Websitedaten löschen. Ab 1.2.0 kommt die Karte über die Ressourcenliste (Websocket, nicht gecacht) und das Problem verschwindet. |
 | „Keine Integration gefunden" | Der Tank ist noch nicht eingerichtet. |
 | Meldung „Statistiksumme gesunken" | Die Statistik der Quelle wurde gelöscht oder neu aufgebaut; die Integration setzt den Bezugspunkt nach. Danach den Füllstand einmal korrigieren. |
