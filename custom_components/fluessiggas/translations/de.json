@@ -119,7 +119,7 @@
         "name": "Tagesverbrauch"
       },
       "jahresverbrauch": {
-        "name": "Jahresverbrauch"
+        "name": "Erwarteter Jahresverbrauch"
       },
       "reichweite": {
         "name": "Reichweite"

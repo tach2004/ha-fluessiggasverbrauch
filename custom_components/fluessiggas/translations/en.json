@@ -119,7 +119,7 @@
         "name": "Daily consumption"
       },
       "jahresverbrauch": {
-        "name": "Annual consumption"
+        "name": "Expected annual consumption"
       },
       "reichweite": {
         "name": "Range"

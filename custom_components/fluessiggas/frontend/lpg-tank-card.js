@@ -656,12 +656,14 @@ class LpgTankCard extends HTMLElement {
     const proTag = zahl(this._zustand("tagesverbrauch"), null);
 
     const reserveAm = this._datum("reserve_am");
+    const jahr = zahl(this._zustand("jahresverbrauch"), null);
     const kacheln = [
       { label: "Restenergie", wert: this._fmt(energie, 0, "kWh"),
         zusatz: wert !== null ? this._fmt(wert, 0, "EUR") : "", kennung: "restenergie" },
       { label: "Ø Verbrauch", wert: this._fmt(proTag, 1, "L/d"),
-        zusatz: proTag !== null ? this._fmt(proTag * 30, 0, "L/Monat") : "",
-        kennung: "tagesverbrauch" },
+        zusatz: jahr !== null ? `erwartet ${this._fmt(jahr, 0, "L/Jahr")}`
+          : (proTag !== null ? this._fmt(proTag * 30, 0, "L/Monat") : ""),
+        kennung: jahr !== null ? "jahresverbrauch" : "tagesverbrauch" },
       { label: "Reichweite", wert: reichweite !== null ? this._fmt(reichweite, 0, "Tage") : "–",
         zusatz: reichweite !== null ? `≈ ${this._fmt(reichweite / 30.44, 1)} Monate` : "",
         kennung: "reichweite" },

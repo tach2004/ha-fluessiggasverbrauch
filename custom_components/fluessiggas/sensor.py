@@ -99,6 +99,8 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         attrs_fn=lambda s, c: {
             "quelle": c.price_entity or "integration",
             "preis_pro_m3": round(s.price * c.liter_per_m3, 4),
+            # damit eigene Templates den kalibrierten Faktor mitbenutzen können
+            "liter_pro_m3": round(c.liter_per_m3, 3),
         },
     ),
     TankSensorDescription(
