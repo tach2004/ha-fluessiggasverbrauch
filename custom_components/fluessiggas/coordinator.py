@@ -22,7 +22,8 @@ from homeassistant.components.recorder.statistics import (
     statistics_during_period,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -178,6 +179,29 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         """Steht der fremde Preis je m³ statt je Liter?"""
         einheit = (zustand.attributes.get("unit_of_measurement") or "").strip().lower()
         return any(marke in einheit for marke in PRICE_UNITS_VOLUME)
+
+    @callback
+    def async_track_price_source(self) -> None:
+        """Auf Änderungen des fremden Preis-Helfers sofort reagieren.
+
+        Ohne das würde ein von Hand geänderter Preis erst beim nächsten
+        Durchlauf sichtbar – also bis zu fünf Minuten später.
+        """
+        if not (entity_id := self.price_entity):
+            return
+        self.entry.async_on_unload(
+            async_track_state_change_event(
+                self.hass, [entity_id], self._async_price_source_changed
+            )
+        )
+
+    @callback
+    def _async_price_source_changed(self, event: Event[EventStateChangedData]) -> None:
+        alt = event.data.get("old_state")
+        neu = event.data.get("new_state")
+        if neu is None or (alt is not None and alt.state == neu.state):
+            return
+        self.hass.async_create_task(self.async_request_refresh())
 
     async def async_set_price(self, price_per_liter: float) -> None:
         """Gaspreis setzen – bevorzugt dorthin, wo er herkommt.

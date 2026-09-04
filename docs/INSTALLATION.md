@@ -55,7 +55,7 @@ bereits herausgerechnet hat.
 | Liter je m³ Gas | 3,92 | Propan im Normzustand. Wird bei der ersten Betankung automatisch nachkalibriert. |
 | Energieinhalt je Liter | 7,0 kWh | Heizwert 6,57 – Brennwert 7,11. |
 | Gaspreis je Liter | – | Startwert in EUR/L. |
-| Vorhandener Preis-Helfer | leer | Optional. Deine bestehende `input_number` mit dem Gaspreis. Steht sie in EUR/m³, wird selbst umgerechnet. Leer lassen → die Integration legt eine eigene Zahl an. |
+| Vorhandener Preis-Helfer | leer | Optional, und **nur eine `input_number` oder `number`** – kein Template-Sensor (siehe Schritt 6). Steht der Helfer in EUR/m³, wird selbst umgerechnet. Leer lassen → die Integration legt eine eigene Zahl an. |
 | Reserve | 970 L | 20 % vom Nennvolumen. Ab hier gilt der Tank als leer. |
 | Vorlaufzeit | 21 d | Zeit vom Bestellen bis zum Tankwagen. |
 | Mittelung über Jahre | 2 | Über wie viele Jahre je Kalendermonat gemittelt wird. |
@@ -123,9 +123,27 @@ Der Preis ist überall in **EUR je Liter**.
 * Sonst legt die Integration die Zahl **Gaspreis** an, die du direkt im
   Dashboard ändern kannst.
 
+> **Nur eine beschreibbare Zahl.** Zulässig sind `input_number` und `number` –
+> also Entitäten, in die man einen Wert eintragen kann. Ein **Template-Sensor
+> ist nicht zulässig**, auch wenn er den Preis anzeigt: Er berechnet sich aus
+> seiner Vorlage, lässt sich nicht setzen, und ein beim Tanken eingegebener
+> Preis hätte nirgends hin. Die Auswahl im Dialog bietet deshalb nur die beiden
+> zulässigen Domains an.
+>
+> Wer einen abgeleiteten Sensor in EUR/m³ betreibt (etwa fürs Energiedashboard),
+> trägt hier die **input_number dahinter** ein, nicht den Sensor. Der Sensor
+> folgt dann automatisch, weil er von ihr abgeleitet ist – und behält seine
+> Entity-ID samt Langzeitstatistik.
+
+Änderst du den Helfer von Hand, folgt die Integration sofort – sie hört auf die
+Entität, statt auf den nächsten Durchlauf zu warten.
+
 In beiden Fällen gibt es zusätzlich den Sensor *Gaspreis* mit
 Langzeitstatistik. Der ist der Grund, warum sich der Preisverlauf über Jahre
 darstellen lässt – eine `input_number` allein kann das nicht.
+
+Der Preis einer bereits eingetragenen Lieferung ist ein fester Schnappschuss und
+ändert sich nie mehr, egal wie sich der aktuelle Gaspreis danach entwickelt.
 
 ## 7. Monatsprofil prüfen
 

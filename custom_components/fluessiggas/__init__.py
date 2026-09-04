@@ -113,6 +113,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TankConfigEntry) -> bool
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
+    coordinator.async_track_price_source()
     _async_register_services(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

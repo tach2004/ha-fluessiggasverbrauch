@@ -100,9 +100,12 @@ def _details_schema() -> vol.Schema:
                 4, 9, 0.01, "kWh/L"
             ),
             vol.Required(CONF_PRICE, default=DEFAULT_PRICE): _zahl(0, 10, 0.001, "EUR/L"),
+            # Bewusst nur beschreibbare Zahlen: Ein Template-Sensor berechnet
+            # sich selbst und lässt sich nicht zurückschreiben - ein beim
+            # Tanken eingegebener Preis liefe dort ins Leere.
             vol.Optional(CONF_PRICE_ENTITY): selector.EntitySelector(
                 selector.EntitySelectorConfig(
-                    domain=["input_number", "number", "sensor"], multiple=False
+                    domain=["input_number", "number"], multiple=False
                 )
             ),
             vol.Required(CONF_RESERVE, default=DEFAULT_RESERVE): _zahl(0, 5000, 10, "L"),
