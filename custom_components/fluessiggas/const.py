@@ -19,6 +19,7 @@ CONF_RESERVE: Final = "reserve"
 CONF_LEAD_TIME: Final = "lead_time"
 CONF_PROFILE_YEARS: Final = "profile_years"
 CONF_CORRECTION: Final = "correction"
+CONF_WARN_PERCENT: Final = "warn_percent"
 
 UNIT_AUTO: Final = "auto"
 UNIT_M3: Final = "m3"
@@ -37,6 +38,7 @@ DEFAULT_RESERVE: Final = 970.0          # L – 20 % von 4850 L
 DEFAULT_LEAD_TIME: Final = 21           # Tage Vorlaufzeit der Lieferung
 DEFAULT_PROFILE_YEARS: Final = 2
 DEFAULT_CORRECTION: Final = 100.0       # %
+DEFAULT_WARN_PERCENT: Final = 30.0      # % der Tankuhr – darunter wird die Karte gelb
 
 # Typische deutsche Heizkurve, Anteil am Jahresverbrauch je Monat in %.
 # Dient als Form für Monate, für die noch keine Messwerte vorliegen.

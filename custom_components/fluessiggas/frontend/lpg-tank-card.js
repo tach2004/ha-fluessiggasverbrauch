@@ -14,6 +14,9 @@
  *   tank: 01JABC…                       # tank_id oder Name, bei mehreren Tanks
  *   entities: { inhalt: sensor.xyz }    # optionale Handkorrektur
  *
+ * Die Farbschwellen kommen aus der Integration (Reserve und Warnschwelle),
+ * damit sie nicht an zwei Stellen gepflegt werden müssen.
+ *
  * Besonderheit der Grafik: Der Tank ist ein liegender Zylinder – die
  * Flüssigkeitshöhe verhält sich also NICHT linear zum Volumen (bei 50 %
  * steht das Gas genau in der Mitte, bei 85 % schon fast am Scheitel).
@@ -33,8 +36,6 @@ const DEFAULTS = {
   name: null,         // null = Name des Tanks aus Home Assistant
   tank: null,         // tank_id oder Namensteil, nur bei mehreren Tanks nötig
   entities: {},       // manuelle Zuordnung, z. B. { inhalt: "sensor.xyz" }
-  warn_prozent: 25,   // % der nutzbaren Füllung -> gelb
-  alarm_prozent: 12,  // % der nutzbaren Füllung -> rot
   betankung: true,    // Betankungsformular anbieten
   verlauf: true,      // Restverlauf der kommenden Monate zeichnen
   preisverlauf: true, // Preisentwicklung der eingetragenen Lieferungen
@@ -610,11 +611,13 @@ class LpgTankCard extends HTMLElement {
     const nutzbar = a.nutzbares_volumen || nenn * 0.85;
     const reserve = a.reserve || 0;
     const prozent = zahl(this._zustand("inhalt_prozent"), (liter / Math.max(nenn, 1)) * 100);
-    const nutzProzent = zahl(this._zustand("inhalt_nutzbar"), (liter / Math.max(nutzbar, 1)) * 100);
 
+    // Rot hängt an der Reserve statt an einer eigenen Zahl – sonst könnten
+    // Farbe und Bestellfrist auseinanderlaufen. Gelb ist einstellbar.
+    const warnAb = a.warnschwelle_prozent != null ? Number(a.warnschwelle_prozent) : 30;
     const farbe =
-      nutzProzent <= c.alarm_prozent ? "var(--lpg-alarm)"
-      : nutzProzent <= c.warn_prozent ? "var(--lpg-warn)"
+      (reserve > 0 && liter <= reserve) ? "var(--lpg-alarm)"
+      : (prozent <= warnAb) ? "var(--lpg-warn)"
       : "var(--lpg-gut)";
     this.style.setProperty("--lpg-farbe", farbe);
 

@@ -57,13 +57,16 @@ Integration setzt – unabhängig von Sprache und Entity-IDs.
 ```yaml
 type: custom:lpg-tank-card
 tank: Gartenhaus       # nur nötig, wenn mehrere Tanks eingerichtet sind
-warn_prozent: 25       # ab hier gelb (% der nutzbaren Füllung)
-alarm_prozent: 12      # ab hier rot
 verlauf: true          # Restverlauf der kommenden Monate
 preisverlauf: true     # Preisentwicklung der eingetragenen Lieferungen
 betankung: true        # Betankungsformular
 wellen: true           # Wellenanimation
 ```
+
+Die Farbe des Tanks steuert die Integration, nicht die Karte: **rot**, sobald die
+Reserve erreicht ist, **gelb** unterhalb der einstellbaren *Warnschwelle*
+(Vorgabe 30 % der Tankuhr). Rot hat bewusst keine eigene Einstellung – sonst
+könnten Farbe und Bestellfrist auseinanderlaufen.
 
 Die Karte zeigt sechs Kennzahlen unter dem Tank – Restenergie, Ø Verbrauch,
 Reichweite, **Reserve erreicht**, voraussichtlich leer und Bestellfrist – sowie
@@ -175,6 +178,7 @@ Details und die Entscheidungen dahinter: [docs/KONZEPT.md](docs/KONZEPT.md).
 | Energieinhalt | 7,0 kWh/L (Heizwert 6,57 / Brennwert 7,11) |
 | Maximaler Füllgrad | 85 % – der Rest ist Ausdehnungsraum |
 | Reserve (Vorgabe) | 970 L = 20 % vom Nennvolumen |
+| Warnschwelle (Vorgabe) | 30 % der Tankuhr |
 
 Beispiel: 4.850 L Nennvolumen → 4.122 L nutzbar → rund **28.800 kWh**.
 

@@ -113,7 +113,8 @@ function hassMit(tankId, liter, tageBisLeer) {
     states: Object.fromEntries([
       e("inhalt", liter.toFixed(1), {
         friendly_name: "Flüssiggastank Füllstand",
-        nennvolumen: nenn, nutzbares_volumen: nutzbar, reserve: 400,
+        nennvolumen: nenn, nutzbares_volumen: nutzbar, reserve: 970,
+        warnschwelle_prozent: 30,
       }),
       e("inhalt_prozent", (liter / nenn * 100).toFixed(1)),
       e("inhalt_nutzbar", (liter / nutzbar * 100).toFixed(1)),
@@ -145,6 +146,7 @@ function hassMit(tankId, liter, tageBisLeer) {
 const faelle = [
   ["Frisch getankt – 4120 L (85 %)", 4120, 1014],
   ["Halbvoll – 2200 L (45 %)", 2200, 560],
+  ["Warnung – 1200 L (25 %)", 1200, 230],
   ["Reserve – 380 L (8 %)", 380, 74],
 ];
 

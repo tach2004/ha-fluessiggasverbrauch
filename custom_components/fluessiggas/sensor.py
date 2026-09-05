@@ -55,6 +55,8 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
             "nennvolumen": round(c.capacity),
             "nutzbares_volumen": s.usable_capacity,
             "reserve": c.reserve,
+            # von der Karte für die Einfärbung genutzt
+            "warnschwelle_prozent": c.warn_percent,
         },
     ),
     TankSensorDescription(

@@ -40,6 +40,7 @@ from .const import (
     CONF_PROFILE_YEARS,
     CONF_RESERVE,
     CONF_SOURCE_UNIT,
+    CONF_WARN_PERCENT,
     CONF_SOURCES,
     DEFAULT_CAPACITY,
     DEFAULT_CORRECTION,
@@ -51,6 +52,7 @@ from .const import (
     PRICE_UNITS_VOLUME,
     PRICE_WRITABLE_DOMAINS,
     DEFAULT_PROFILE_YEARS,
+    DEFAULT_WARN_PERCENT,
     DEFAULT_RESERVE,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -157,6 +159,11 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
     @property
     def kwh_per_liter(self) -> float:
         return float(self.option(CONF_KWH_PER_LITER, DEFAULT_KWH_PER_LITER))
+
+    @property
+    def warn_percent(self) -> float:
+        """Ab diesem Anteil der Tankuhr färbt die Karte gelb."""
+        return float(self.option(CONF_WARN_PERCENT, DEFAULT_WARN_PERCENT))
 
     @property
     def price_entity(self) -> str | None:

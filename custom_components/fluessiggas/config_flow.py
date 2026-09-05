@@ -26,6 +26,7 @@ from .const import (
     CONF_PRICE_ENTITY,
     CONF_PROFILE_YEARS,
     CONF_RESERVE,
+    CONF_WARN_PERCENT,
     CONF_SOURCE_UNIT,
     CONF_SOURCES,
     DEFAULT_CAPACITY,
@@ -38,6 +39,7 @@ from .const import (
     DEFAULT_PRICE,
     DEFAULT_PROFILE_YEARS,
     DEFAULT_RESERVE,
+    DEFAULT_WARN_PERCENT,
     DOMAIN,
     SOURCE_UNITS,
     UNIT_AUTO,
@@ -109,6 +111,7 @@ def _details_schema() -> vol.Schema:
                 )
             ),
             vol.Required(CONF_RESERVE, default=DEFAULT_RESERVE): _zahl(0, 5000, 10, "L"),
+            vol.Required(CONF_WARN_PERCENT, default=DEFAULT_WARN_PERCENT): _zahl(0, 100, 1, "%"),
             vol.Required(CONF_LEAD_TIME, default=DEFAULT_LEAD_TIME): _zahl(0, 180, 1, "d"),
             vol.Required(CONF_PROFILE_YEARS, default=DEFAULT_PROFILE_YEARS): _zahl(1, 10, 1, "a"),
             vol.Required(CONF_CORRECTION, default=DEFAULT_CORRECTION): _zahl(25, 250, 1, "%"),

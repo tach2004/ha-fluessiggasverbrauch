@@ -56,7 +56,8 @@ bereits herausgerechnet hat.
 | Energieinhalt je Liter | 7,0 kWh | Heizwert 6,57 – Brennwert 7,11. |
 | Gaspreis je Liter | – | Startwert in EUR/L. |
 | Vorhandener Preis-Helfer | leer | Optional, und **nur eine `input_number` oder `number`** – kein Template-Sensor (siehe Schritt 6). Steht der Helfer in EUR/m³, wird selbst umgerechnet. Leer lassen → die Integration legt eine eigene Zahl an. |
-| Reserve | 970 L | 20 % vom Nennvolumen. Ab hier gilt der Tank als leer. |
+| Reserve | 970 L | 20 % vom Nennvolumen. Ab hier gilt der Tank als leer – und die Karte färbt rot. |
+| Warnschwelle der Karte | 30 % | Unter diesem Wert der Tankuhr wird der Tank gelb. |
 | Vorlaufzeit | 21 d | Zeit vom Bestellen bis zum Tankwagen. |
 | Mittelung über Jahre | 2 | Über wie viele Jahre je Kalendermonat gemittelt wird. |
 | Korrekturfaktor | 100 % | Skaliert die ganze Prognose, z. B. nach einer Dämmung. |
