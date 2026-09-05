@@ -21,6 +21,7 @@ from homeassistant.helpers import (
     entity_registry as er,
 )
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -33,12 +34,12 @@ from .const import (
     ATTR_PRICE,
     CARD_FILENAME,
     CARD_URL,
+    DATA_VERSION,
     DOMAIN,
     SERVICE_DELIVERY,
     SERVICE_ADD_HISTORY,
     SERVICE_REFRESH_PROFILE,
     SERVICE_SET_LEVEL,
-    VERSION,
 )
 from .coordinator import TankCoordinator
 
@@ -46,8 +47,11 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.NUMBER, Platform.SENSOR]
 KARTE_REGISTRIERT = f"{DOMAIN}_karte"
-#: Versionsanhang, damit ein Update den Browser-Cache umgeht
-KARTE_RESSOURCE = f"{CARD_URL}?v={VERSION}"
+
+
+def karten_url(hass: HomeAssistant) -> str:
+    """URL der Karte mit Versionsanhang gegen den Browser-Cache."""
+    return f"{CARD_URL}?v={hass.data.get(DATA_VERSION, '0')}"
 
 
 def _dienst_schema(felder: dict) -> vol.Schema:
@@ -100,6 +104,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     Hier registriert, steht die Route auch dann, wenn die Einrichtung eines
     Tanks später scheitert oder wiederholt wird.
     """
+    # Version einmalig aus der manifest.json holen - einzige Quelle der Wahrheit
+    integration = await async_get_integration(hass, DOMAIN)
+    hass.data[DATA_VERSION] = str(integration.version or "0.0.0")
+
     await _async_register_card(hass)
     return True
 
@@ -156,8 +164,10 @@ async def _async_register_card(hass: HomeAssistant) -> None:
         await hass.http.async_register_static_paths(
             [StaticPathConfig(CARD_URL, str(pfad), cache_headers=False)]
         )
-        add_extra_js_url(hass, KARTE_RESSOURCE)
-        _LOGGER.debug("Lovelace-Karte unter %s eingebunden", KARTE_RESSOURCE)
+        add_extra_js_url(hass, karten_url(hass))
+        # bewusst auf info: Bei Ladeproblemen ist das die erste Frage -
+        # wurde die Karte überhaupt und unter welcher URL angemeldet?
+        _LOGGER.info("Lovelace-Karte eingebunden: %s (Datei %s)", karten_url(hass), pfad)
 
     # Die Ressource dagegen bei jeder Einrichtung prüfen: Route und Zusatzmodul
     # gelten für die ganze Laufzeit, der Ressourceneintrag aber wird beim
@@ -188,7 +198,7 @@ async def _async_register_resource(hass: HomeAssistant) -> None:
         _LOGGER.info(
             "Lovelace läuft im YAML-Modus. Bitte '%s' von Hand als Ressource "
             "vom Typ 'module' eintragen",
-            KARTE_RESSOURCE,
+            karten_url(hass),
         )
         return
 
@@ -197,15 +207,15 @@ async def _async_register_resource(hass: HomeAssistant) -> None:
     for eintrag in ressourcen.async_items():
         if not str(eintrag.get("url", "")).startswith(CARD_URL):
             continue
-        if eintrag.get("url") != KARTE_RESSOURCE:
+        if eintrag.get("url") != karten_url(hass):
             await ressourcen.async_update_item(
-                eintrag["id"], {"res_type": "module", "url": KARTE_RESSOURCE}
+                eintrag["id"], {"res_type": "module", "url": karten_url(hass)}
             )
-            _LOGGER.info("Lovelace-Ressource auf %s aktualisiert", KARTE_RESSOURCE)
+            _LOGGER.info("Lovelace-Ressource auf %s aktualisiert", karten_url(hass))
         return
 
-    await ressourcen.async_create_item({"res_type": "module", "url": KARTE_RESSOURCE})
-    _LOGGER.info("Lovelace-Ressource %s angelegt", KARTE_RESSOURCE)
+    await ressourcen.async_create_item({"res_type": "module", "url": karten_url(hass)})
+    _LOGGER.info("Lovelace-Ressource %s angelegt", karten_url(hass))
 
 
 async def _async_remove_resource(hass: HomeAssistant) -> None:

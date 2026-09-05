@@ -25,12 +25,31 @@ def _quelltext(name: str) -> str:
     return (INTEGRATION / name).read_text(encoding="utf-8")
 
 
-def test_manifest_und_version_passen_zusammen():
+def test_manifest_ist_die_einzige_versionsquelle():
+    """Die Version darf nur in der manifest.json stehen.
+
+    Stand sie zusätzlich im Code, zeigten Geräteinfo und Karten-URL nach einem
+    Release die alte Nummer, bis jemand daran denkt - genau das ist passiert.
+    """
     manifest = _json(INTEGRATION / "manifest.json")
-    version = re.search(r'VERSION: Final = "([^"]+)"', _quelltext("const.py")).group(1)
-    assert manifest["version"] == version, (manifest["version"], version)
+    assert re.fullmatch(r"\d+\.\d+\.\d+", manifest["version"]), manifest["version"]
     assert manifest["domain"] == "fluessiggas"
     assert set(manifest["dependencies"]) >= {"recorder", "http", "frontend"}
+
+    for datei in ("const.py", "sensor.py", "number.py", "__init__.py"):
+        assert 'VERSION: Final = "' not in _quelltext(datei), datei
+        assert not re.search(r'=\s*"\d+\.\d+\.\d+"', _quelltext(datei)), (
+            f"{datei} enthält eine fest verdrahtete Version"
+        )
+
+    # Gelesen wird sie beim Start aus der Integration selbst
+    assert "async_get_integration" in _quelltext("__init__.py")
+    assert "DATA_VERSION" in _quelltext("const.py")
+
+    # Auch die Karte pflegt keine eigene Nummer, sondern liest sie aus ihrer URL
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    assert "import.meta.url" in karte
+    assert not re.search(r'LPG_VERSION = "\d+\.\d+\.\d+"', karte)
 
 
 def test_alle_sensoren_sind_uebersetzt():

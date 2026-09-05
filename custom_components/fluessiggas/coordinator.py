@@ -52,6 +52,7 @@ from .const import (
     DEFAULT_PRICE,
     PRICE_WRITABLE_DOMAINS,
     DEFAULT_PROFILE_YEARS,
+    DATA_VERSION,
     DEFAULT_WARN_PERCENT,
     DEFAULT_RESERVE,
     STORAGE_KEY,
@@ -141,6 +142,11 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         if key in self.entry.options:
             return self.entry.options[key]
         return self.entry.data.get(key, default)
+
+    @property
+    def version(self) -> str:
+        """Version aus der manifest.json, beim Start eingelesen."""
+        return str(self.hass.data.get(DATA_VERSION, "0.0.0"))
 
     @property
     def sources(self) -> list[str]:

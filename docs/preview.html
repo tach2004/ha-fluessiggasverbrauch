@@ -46,6 +46,10 @@
 <p class="sub">
   Statische Vorschau mit einem simulierten Home&nbsp;Assistant. Die Karte selbst ist
   unverändert <code>custom_components/fluessiggas/frontend/lpg-tank-card.js</code>.
+  <br><strong>Über HTTP öffnen</strong>, nicht per Doppelklick: Die Karte wird als
+  ES-Modul geladen, und das verbietet der Browser bei <code>file://</code>.
+  Zum Beispiel <code>python3 -m http.server 8899</code> im Projektordner, dann
+  <code>http://localhost:8899/docs/preview.html</code>.
 </p>
 <div class="reihe" id="reihe"></div>
 
@@ -189,6 +193,6 @@ window.addEventListener("load", () => {
   });
 });
 </script>
-<script src="../custom_components/fluessiggas/frontend/lpg-tank-card.js"></script>
+<script type="module" src="../custom_components/fluessiggas/frontend/lpg-tank-card.js?v=vorschau"></script>
 </body>
 </html>

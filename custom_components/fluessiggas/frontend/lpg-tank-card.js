@@ -23,7 +23,11 @@
  * Die Karte rechnet das Volumen über die Kreissegmentfläche in eine Höhe um.
  */
 
-const LPG_VERSION = "1.2.0";
+// Die Version kommt aus der URL, mit der die Integration die Karte einbindet
+// (…/lpg-tank-card.js?v=1.3.0). So steht sie nur in der manifest.json und
+// muss hier nicht gepflegt werden. Setzt voraus, dass die Datei als Modul
+// geladen wird - genau so bindet Home Assistant sie ein.
+const LPG_VERSION = new URL(import.meta.url).searchParams.get("v") || "unbekannt";
 
 /** Kennungen, die die Integration an ihren Entitäten hinterlässt. */
 const KENNUNGEN = [
