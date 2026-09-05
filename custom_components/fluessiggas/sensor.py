@@ -103,6 +103,8 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
             "preis_pro_m3": round(s.price * c.liter_per_m3, 4),
             # damit eigene Templates den kalibrierten Faktor mitbenutzen können
             "liter_pro_m3": round(c.liter_per_m3, 3),
+            "statistik_quelle": c.price_stats_entity,
+            "preisverlauf": c.price_history,
         },
     ),
     TankSensorDescription(

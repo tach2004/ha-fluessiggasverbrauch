@@ -95,6 +95,20 @@ function monatsVorschau(liter) {
   return out;
 }
 
+/* Simulierte Langzeitstatistik: 54 Monatswerte in EUR/L */
+function preisStatistik() {
+  const werte = [];
+  let jahr = 2021, monat = 4;
+  for (let i = 0; i < 54; i++) {
+    const wellen = 0.62 + 0.28 * Math.sin(i / 7) + 0.05 * Math.sin(i / 2.3);
+    werte.push({ monat: `${jahr}-${String(monat + 1).padStart(2, "0")}`,
+                 preis: Math.round(wellen * 1000) / 1000 });
+    monat++;
+    if (monat === 12) { monat = 0; jahr++; }
+  }
+  return werte;
+}
+
 function hassMit(tankId, liter, tageBisLeer) {
   const nenn = 4850, maxP = 85, kwhL = 7.0, preis = 0.677;
   const nutzbar = nenn * maxP / 100;
@@ -124,7 +138,11 @@ function hassMit(tankId, liter, tageBisLeer) {
       e("reichweite", tageBisLeer, { monate }),
       e("leer_am", inTagen(tageBisLeer)),
       e("bestellen_bis", inTagen(tageBisLeer - 110)),
-      e("gaspreis", preis.toFixed(3)),
+      e("gaspreis", preis.toFixed(3), {
+        liter_pro_m3: 3.92,
+        statistik_quelle: "sensor.gaspreis_eur_m3",
+        preisverlauf: preisStatistik(),
+      }),
       e("jahresverbrauch", 1400),
       e("reserve_am", inTagen(Math.round(tageBisLeer * 0.72))),
       e("letzte_betankung", "2025-08-14", {

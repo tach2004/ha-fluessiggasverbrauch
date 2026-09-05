@@ -156,6 +156,20 @@ zwar als **fester Schnappschuss**: Der Preis einer vergangenen Lieferung ändert
 sich nie mehr, auch wenn der aktuelle Gaspreis später steigt oder fällt. Genau
 das macht die Preisentwicklung in der Karte aussagekräftig.
 
+### Preisverlauf aus vorhandener Statistik
+
+Wer schon einen Preis-Sensor mit Langzeitstatistik pflegt – etwa für das
+Energiedashboard –, trägt ihn im Feld *Preis-Statistik* ein. Die Karte zeichnet
+den Verlauf dann aus dessen Historie statt aus den Lieferungen und rechnet
+EUR/m³ selbst in EUR/L um. Die eingetragenen Betankungen liegen als Punkte auf
+der Linie: Man sieht auf einen Blick, ob man über oder unter dem Verlauf gekauft
+hat.
+
+Der Sensor wird dabei **ausschließlich gelesen** und nie verändert – Sensoren
+lassen sich in Home Assistant grundsätzlich nicht beschreiben. Den Preis selbst
+setzt weiterhin der Preis-Helfer. Ohne Eintrag bleibt alles wie gehabt und die
+Karte zeichnet die Lieferungen.
+
 ## Wie die Prognose rechnet
 
 Ein Tagesdurchschnitt taugt nicht – im Januar geht rund zehnmal so viel weg wie
