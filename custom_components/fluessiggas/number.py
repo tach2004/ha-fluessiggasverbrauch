@@ -15,7 +15,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, VERSION
+from .const import DOMAIN
 from .coordinator import TankCoordinator
 
 
@@ -50,7 +50,7 @@ class GaspreisNumber(CoordinatorEntity[TankCoordinator], NumberEntity):
             manufacturer="Flüssiggas",
             model="Tank",
             entry_type=DeviceEntryType.SERVICE,
-            sw_version=VERSION,
+            sw_version=coordinator.version,
         )
 
     @property

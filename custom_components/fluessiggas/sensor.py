@@ -20,7 +20,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, VERSION
+from .const import DOMAIN
 from .coordinator import TankCoordinator, TankState
 
 MONATSNAMEN = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
@@ -233,7 +233,7 @@ class TankSensor(CoordinatorEntity[TankCoordinator], SensorEntity):
             manufacturer="Flüssiggas",
             model="Tank",
             entry_type=DeviceEntryType.SERVICE,
-            sw_version=VERSION,
+            sw_version=coordinator.version,
         )
 
     @property

@@ -74,7 +74,10 @@ ATTR_PERCENT: Final = "prozent"
 CARD_URL: Final = "/fluessiggas/lpg-tank-card.js"
 CARD_FILENAME: Final = "lpg-tank-card.js"
 
+#: Die Version steht ausschließlich in der manifest.json und wird beim Start
+#: von dort gelesen - sonst driften Geräteinfo, Karten-URL und Manifest
+#: auseinander, sobald jemand nur eine Stelle anfasst.
+DATA_VERSION: Final = f"{DOMAIN}_version"
+
 #: Domains, in die die Integration einen Preis zurückschreiben darf
 PRICE_WRITABLE_DOMAINS: Final = ("input_number", "number")
-
-VERSION: Final = "1.2.0"
