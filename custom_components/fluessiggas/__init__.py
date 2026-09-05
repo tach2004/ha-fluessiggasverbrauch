@@ -161,8 +161,15 @@ async def _async_register_card(hass: HomeAssistant) -> None:
         # Erst nach der Prüfung merken, sonst bliebe ein einmaliger Fehlschlag
         # für den Rest der Laufzeit hängen.
         hass.data[KARTE_REGISTRIERT] = True
+        # Mit Cache-Headern: Das Frontend gibt einer Custom Card nur zwei
+        # Sekunden, bis sie sich registriert hat (TIMEOUT in
+        # create-element-base.ts), sonst erscheint "custom element doesn't
+        # exist". Ohne Header lud der Browser die Datei bei jedem Seitenaufruf
+        # neu - auf einem beschäftigten Home Assistant reicht das Fenster dann
+        # nicht. Die URL trägt die Version, ein Update wird also trotzdem
+        # sofort geholt.
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(CARD_URL, str(pfad), cache_headers=False)]
+            [StaticPathConfig(CARD_URL, str(pfad), cache_headers=True)]
         )
         add_extra_js_url(hass, karten_url(hass))
         # bewusst auf info: Bei Ladeproblemen ist das die erste Frage -

@@ -177,6 +177,34 @@ Unvermeidbar bleibt: Direkt nach der *Erst*installation muss die Seite einmal
 neu geladen werden (Strg+F5). Ein bereits ausgeliefertes HTML kann kein
 Skript-Tag nachwachsen lassen.
 
+### Das Zwei-Sekunden-Fenster
+
+Damit war es aber nicht erledigt: Die Karte fiel weiterhin sporadisch aus und
+kam nach ein- bis zweimal Neuladen wieder – unabhängig von Browser, Gerät und
+davon, ob HTTP oder HTTPS. Die Erklärung steht im Frontend-Quelltext
+(`create-element-base.ts`):
+
+```js
+const timer = window.setTimeout(() => { … }, TIMEOUT);   // TIMEOUT = 2000
+customElements.whenDefined(tag).then(() => { clearTimeout(timer); … });
+```
+
+Eine Custom Card hat **zwei Sekunden**, um sich zu registrieren. Danach
+erscheint „custom element doesn't exist". Kommt sie später doch noch, wird die
+Karte zwar neu aufgebaut – aber der Fehler war zwischenzeitlich sichtbar, und
+in der Kartenauswahl bleibt er stehen.
+
+Der Fehler lag bei der Auslieferung: Die statische Route war mit
+`cache_headers=False` angemeldet, Home Assistant sendete also **gar keine**
+Cache-Header. Der Browser lud die knapp 40 kB bei *jedem* Seitenaufruf neu. Auf
+einem beschäftigten Home Assistant – etwa direkt nach dem Start, wenn der
+Recorder arbeitet – reichen zwei Sekunden dafür nicht zuverlässig.
+
+Mit `cache_headers=True` liefert Home Assistant langlebige Cache-Header. Das
+ist hier gefahrlos, weil die URL die Version trägt (`?v=1.4.0`): Nach einem
+Update ändert sich die URL, der Browser holt die Datei neu, und dazwischen
+kommt sie aus dem lokalen Cache statt über das Netz.
+
 ## Gaspreis: vorhandener Helfer oder eigene Entität
 
 Der Preis ist überall EUR je Liter – Anzeige wie Eingabe. Woher er kommt, ist
