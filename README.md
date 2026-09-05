@@ -160,8 +160,22 @@ das macht die Preisentwicklung in der Karte aussagekräftig.
 
 Wer schon einen Preis-Sensor mit Langzeitstatistik pflegt – etwa für das
 Energiedashboard –, trägt ihn im Feld *Preis-Statistik* ein. Die Karte zeichnet
-den Verlauf dann aus dessen Historie statt aus den Lieferungen und rechnet
-EUR/m³ selbst in EUR/L um. Die eingetragenen Betankungen liegen als Punkte auf
+den Verlauf dann aus dessen Historie statt aus den Lieferungen.
+
+Die Einheit wird dabei erkannt und umgerechnet – aus den Statistik-Metadaten,
+nicht aus der Anzeige:
+
+| Einheit | Umrechnung |
+|---|---|
+| `EUR/L`, `€/L`, ohne Einheit | unverändert |
+| `EUR/m³` | geteilt durch den Faktor L/m³ |
+| `EUR/kWh` | mal dem Energieinhalt je Liter |
+| `ct/…` | zusätzlich durch 100 |
+
+Alles andere – etwa `EUR/kg` oder das mehrdeutige `kWh/m³` – wird **nicht**
+stillschweigend geraten: Die Integration nimmt EUR/L an und schreibt eine
+Warnung ins Log, damit eine falsche Einheit auffällt. Dieselbe Erkennung gilt
+für den Preis-Helfer, auch beim Zurückschreiben. Die eingetragenen Betankungen liegen als Punkte auf
 der Linie: Man sieht auf einen Blick, ob man über oder unter dem Verlauf gekauft
 hat.
 
@@ -207,8 +221,9 @@ dagegen selbst – die wirken sofort.
 ## Tests
 
 ```bash
-python3 tests/test_forecast.py          # Prognoserechnung
-python3 tests/test_integration_files.py # Manifest, Dienste, Übersetzungen
+python3 tests/test_forecast.py           # Prognoserechnung
+python3 tests/test_units.py              # Preiseinheiten und Umrechnung
+python3 tests/test_integration_files.py  # Manifest, Dienste, Icons, Übersetzungen
 ```
 
 ## Lizenz

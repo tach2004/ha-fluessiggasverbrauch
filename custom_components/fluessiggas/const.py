@@ -74,8 +74,6 @@ ATTR_PERCENT: Final = "prozent"
 CARD_URL: Final = "/fluessiggas/lpg-tank-card.js"
 CARD_FILENAME: Final = "lpg-tank-card.js"
 
-#: Einheiten, in denen ein vorhandener Preis-Helfer stehen kann
-PRICE_UNITS_VOLUME: Final = ("m³", "m3", "eur/m³", "eur/m3", "€/m³", "€/m3")
 #: Domains, in die die Integration einen Preis zurückschreiben darf
 PRICE_WRITABLE_DOMAINS: Final = ("input_number", "number")
 
