@@ -237,6 +237,10 @@ class LpgTankCard extends HTMLElement {
         .p-schnitt { stroke: var(--secondary-text-color); stroke-width: 1;
                      stroke-dasharray: 4 4; opacity: .5; }
         .p-text { fill: var(--secondary-text-color); font-size: 10px; }
+        .p-kreuz { stroke: var(--primary-text-color); stroke-width: 1; opacity: .45; }
+        .p-treffer { fill: var(--primary-color); stroke: var(--card-background-color); stroke-width: 2; }
+        .p-box { fill: var(--card-background-color); stroke: var(--divider-color); stroke-width: 1; }
+        .p-boxtext { fill: var(--primary-text-color); font-size: 11px; }
         .p-wert { fill: var(--primary-text-color); font-size: 11px; font-weight: 500; }
 
         .kacheln {
@@ -486,6 +490,15 @@ class LpgTankCard extends HTMLElement {
       e[`m-${k}`].addEventListener("click", () => modus(k)));
 
     e["f-speichern"].addEventListener("click", () => this._speichern());
+
+    // Fadenkreuz im Preisdiagramm. Einmal gebunden, die Zeichnung darin wird
+    // bei jeder Aktualisierung neu aufgebaut.
+    if (e.preise) {
+      ["pointerdown", "pointermove"].forEach((typ) =>
+        e.preise.addEventListener(typ, (ev) => this._preisMarker(ev)));
+      ["pointerleave", "pointercancel"].forEach((typ) =>
+        e.preise.addEventListener(typ, () => this._preisMarkerAus()));
+    }
   }
 
   /* ------------------------------------------------------------ Aktionen */
@@ -795,11 +808,16 @@ class LpgTankCard extends HTMLElement {
         liter: l && l.liter,
       }))
       .filter((l) => l.datum && !isNaN(l.preis))
-      .map((l) => ({ t: l.datum.getTime(), preis: l.preis, liter: l.liter }));
+      .map((l) => ({ t: l.datum.getTime(), preis: l.preis, liter: l.liter, tanken: true }))
+      .sort((a, b) => a.t - b.t);
 
     const ausStatistik = statistik.length >= 2;
     const linie = (ausStatistik ? statistik : lieferungen).slice().sort((a, b) => a.t - b.t);
-    if (!c.preisverlauf || linie.length < 2) { block.hidden = true; return; }
+    if (!c.preisverlauf || linie.length < 2) {
+      block.hidden = true;
+      this._preisDaten = null;
+      return;
+    }
     block.hidden = false;
 
     const alle = linie.concat(lieferungen);
@@ -810,7 +828,7 @@ class LpgTankCard extends HTMLElement {
     const min = Math.min(...preise), max = Math.max(...preise);
     const spanne = Math.max(max - min, 0.01);
 
-    const B = 420, H = 104, l = 34, r = 8, o = 12, u = 20;
+    const B = 420, H = 116, l = 34, r = 8, o = 12, u = 26;
     const x = (t) => l + ((t - tMin) / tSpanne) * (B - l - r);
     const y = (v) => o + (1 - (v - min + spanne * 0.15) / (spanne * 1.3)) * (H - o - u);
 
@@ -820,26 +838,99 @@ class LpgTankCard extends HTMLElement {
     const schnitt = linie.reduce((a, p) => a + p.preis, 0) / linie.length;
 
     const punkte = lieferungen.map((p) =>
-      `<circle class="p-punkt-letzt" cx="${x(p.t).toFixed(1)}" cy="${y(p.preis).toFixed(1)}" r="4">` +
-      `<title>${this._datumText(new Date(p.t))}: ${this._fmt(p.preis, 3, "EUR/L")}` +
-      `${p.liter ? ` · ${this._fmt(p.liter, 0, "L")}` : ""}</title></circle>`).join("");
+      `<circle class="p-punkt-letzt" cx="${x(p.t).toFixed(1)}" cy="${y(p.preis).toFixed(1)}" r="4"/>`
+    ).join("");
 
+    // Jede Betankung bekommt ihr Datum an die Achse - übersprungen nur, wo es
+    // sich sonst überlappen würde. Ohne Betankungen die Spanne der Linie.
     const lang = (this._hass.locale && this._hass.locale.language) || "de";
     const kurz = (t) => new Date(t).toLocaleDateString(lang, { month: "2-digit", year: "2-digit" });
+    let beschriftung = "";
+    if (lieferungen.length) {
+      let letztesX = -999;
+      beschriftung = lieferungen.map((p) => {
+        const px = Math.min(Math.max(x(p.t), l + 12), B - r - 12);
+        if (px - letztesX < 38) return "";
+        letztesX = px;
+        return `<text class="p-text" x="${px.toFixed(1)}" y="${H - 6}" text-anchor="middle">${kurz(p.t)}</text>`;
+      }).join("");
+    } else {
+      beschriftung =
+        `<text class="p-text" x="${l}" y="${H - 6}">${kurz(tMin)}</text>` +
+        `<text class="p-text" x="${B - r}" y="${H - 6}" text-anchor="end">${kurz(tMax)}</text>`;
+    }
 
+    svg.setAttribute("viewBox", `0 0 ${B} ${H}`);
     svg.innerHTML = `
       <line class="p-schnitt" x1="${l}" y1="${y(schnitt).toFixed(1)}" x2="${B - r}" y2="${y(schnitt).toFixed(1)}"/>
       <text class="p-text" x="${l - 4}" y="${(y(max) + 3).toFixed(1)}" text-anchor="end">${this._fmt(max, 2)}</text>
       <text class="p-text" x="${l - 4}" y="${(y(min) + 3).toFixed(1)}" text-anchor="end">${this._fmt(min, 2)}</text>
-      <path class="p-linie" d="${pfad}"/>${punkte}
-      <text class="p-text" x="${l}" y="${H - 6}">${kurz(tMin)}</text>
-      <text class="p-text" x="${B - r}" y="${H - 6}" text-anchor="end">${kurz(tMax)}</text>`;
+      <path class="p-linie" d="${pfad}"/>${punkte}${beschriftung}
+      <g id="p-marker"></g>
+      <rect id="p-hit" x="${l}" y="0" width="${(B - l - r).toFixed(1)}" height="${H - u}"
+            fill="transparent" style="cursor:crosshair;touch-action:none"/>`;
+
+    // Für das Fadenkreuz: Skalen und Punkte merken, die Zeichnung wird ja bei
+    // jeder Zustandsänderung neu aufgebaut.
+    this._preisDaten = { punkte: alle.slice().sort((a, b) => a.t - b.t), x, y, B, H, l, r, u };
 
     const anzahl = lieferungen.length;
-    this._el["preis-spanne"].textContent = ausStatistik
-      ? `Statistik · ${anzahl} ${anzahl === 1 ? "Lieferung" : "Lieferungen"} · Ø ${this._fmt(schnitt, 3, "EUR/L")}`
-      : `${anzahl} ${anzahl === 1 ? "Lieferung" : "Lieferungen"} · Ø ${this._fmt(schnitt, 3, "EUR/L")}`;
+    this._el["preis-spanne"].textContent = (ausStatistik ? "Statistik · " : "") +
+      `${anzahl} ${anzahl === 1 ? "Lieferung" : "Lieferungen"} · Ø ${this._fmt(schnitt, 3, "EUR/L")}`;
   }
+
+  /**
+   * Fadenkreuz wie im Verlaufsdiagramm von Home Assistant: senkrechte Linie am
+   * nächstgelegenen Datenpunkt, dazu Datum, Preis und - bei einer Betankung -
+   * die Menge.
+   */
+  _preisMarker(ev) {
+    const d = this._preisDaten;
+    const svg = this._el.preise;
+    if (!d || !svg) return;
+    const marker = svg.querySelector("#p-marker");
+    if (!marker) return;
+
+    const kasten = svg.getBoundingClientRect();
+    if (!kasten.width) return;
+    const ux = ((ev.clientX - kasten.left) / kasten.width) * d.B;
+
+    let treffer = null, abstand = Infinity;
+    for (const p of d.punkte) {
+      const dist = Math.abs(d.x(p.t) - ux);
+      // Betankungen gewinnen bei Gleichstand - sie sind die interessantere Zahl
+      if (dist < abstand || (dist === abstand && p.tanken)) { abstand = dist; treffer = p; }
+    }
+    if (!treffer) return;
+
+    const px = d.x(treffer.t), py = d.y(treffer.preis);
+    const lang = (this._hass.locale && this._hass.locale.language) || "de";
+    const text = new Date(treffer.t).toLocaleDateString(lang, {
+      day: "2-digit", month: "2-digit", year: "numeric",
+    }) + " · " + this._fmt(treffer.preis, 3, "EUR/L") +
+      (treffer.liter ? ` · ${this._fmt(treffer.liter, 0, "L")}` : "");
+
+    // Kasten links vom Punkt, wenn rechts kein Platz mehr ist, und in jedem
+    // Fall innerhalb der Zeichenfläche
+    const breite = Math.max(text.length * 5.6 + 14, 96);
+    const bx = Math.min(
+      Math.max(px + breite + 8 > d.B - d.r ? px - breite - 6 : px + 6, 2),
+      d.B - breite - 2,
+    );
+
+    marker.innerHTML = `
+      <line class="p-kreuz" x1="${px.toFixed(1)}" y1="6" x2="${px.toFixed(1)}" y2="${d.H - d.u}"/>
+      <circle class="p-treffer" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5"/>
+      <rect class="p-box" x="${bx.toFixed(1)}" y="4" width="${breite.toFixed(1)}" height="19" rx="5"/>
+      <text class="p-boxtext" x="${(bx + 6).toFixed(1)}" y="17">${text}</text>`;
+  }
+
+  _preisMarkerAus() {
+    const svg = this._el.preise;
+    const marker = svg && svg.querySelector("#p-marker");
+    if (marker) marker.innerHTML = "";
+  }
+
 
   /** "2024-01" auf die Monatsmitte legen, damit die Punkte mittig sitzen. */
   _monat(text) {
