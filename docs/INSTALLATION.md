@@ -56,7 +56,9 @@ bereits herausgerechnet hat.
 | Energieinhalt je Liter | 7,0 kWh | Heizwert 6,57 – Brennwert 7,11. |
 | Gaspreis je Liter | – | Startwert in EUR/L. |
 | Vorhandener Preis-Helfer | leer | Optional, und **nur eine `input_number` oder `number`** – kein Template-Sensor (siehe Schritt 6). Steht der Helfer in EUR/m³, wird selbst umgerechnet. Leer lassen → die Integration legt eine eigene Zahl an. |
-| Reserve | 970 L | 20 % vom Nennvolumen. Ab hier gilt der Tank als leer. |
+| Reserve | 970 L | 20 % vom Nennvolumen. Ab hier gilt der Tank als leer – und die Karte färbt rot. |
+| Warnschwelle der Karte | 30 % | Unter diesem Wert der Tankuhr wird der Tank gelb. |
+| Preis-Statistik | leer | Optional. Ein **Sensor** mit Langzeitstatistik deines Gaspreises; die Karte zeichnet daraus den Preisverlauf. Wird nur gelesen. Einheiten `EUR/L`, `EUR/m³`, `EUR/kWh` und die `ct`-Varianten werden erkannt und umgerechnet. |
 | Vorlaufzeit | 21 d | Zeit vom Bestellen bis zum Tankwagen. |
 | Mittelung über Jahre | 2 | Über wie viele Jahre je Kalendermonat gemittelt wird. |
 | Korrekturfaktor | 100 % | Skaliert die ganze Prognose, z. B. nach einer Dämmung. |
@@ -144,6 +146,17 @@ darstellen lässt – eine `input_number` allein kann das nicht.
 
 Der Preis einer bereits eingetragenen Lieferung ist ein fester Schnappschuss und
 ändert sich nie mehr, egal wie sich der aktuelle Gaspreis danach entwickelt.
+
+**Preisverlauf aus vorhandener Statistik:** Hast du bereits einen Preis-Sensor
+mit Historie – etwa den fürs Energiedashboard –, trag ihn zusätzlich im Feld
+*Preis-Statistik* ein. Dann zeichnet die Karte den Verlauf aus dessen
+Langzeitstatistik statt aus deinen Lieferungen, und deine Betankungen liegen
+als Punkte auf der Linie. Die Einheit wird erkannt: `EUR/L` unverändert,
+`EUR/m³` geteilt, `EUR/kWh` multipliziert, `ct/…` zusätzlich durch 100. Eine
+unbekannte Einheit wird als EUR/L gelesen **und im Log gemeldet** – zur
+Kontrolle steht sie am Preissensor im Attribut `statistik_einheit`. Gelesen wird
+der Sensor nur – setzen lässt sich ein Sensor in Home Assistant ohnehin nicht.
+Ohne Eintrag bleibt es beim Verlauf aus den Lieferungen.
 
 ## 7. Monatsprofil prüfen
 

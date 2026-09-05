@@ -14,6 +14,9 @@
  *   tank: 01JABC…                       # tank_id oder Name, bei mehreren Tanks
  *   entities: { inhalt: sensor.xyz }    # optionale Handkorrektur
  *
+ * Die Farbschwellen kommen aus der Integration (Reserve und Warnschwelle),
+ * damit sie nicht an zwei Stellen gepflegt werden müssen.
+ *
  * Besonderheit der Grafik: Der Tank ist ein liegender Zylinder – die
  * Flüssigkeitshöhe verhält sich also NICHT linear zum Volumen (bei 50 %
  * steht das Gas genau in der Mitte, bei 85 % schon fast am Scheitel).
@@ -33,8 +36,6 @@ const DEFAULTS = {
   name: null,         // null = Name des Tanks aus Home Assistant
   tank: null,         // tank_id oder Namensteil, nur bei mehreren Tanks nötig
   entities: {},       // manuelle Zuordnung, z. B. { inhalt: "sensor.xyz" }
-  warn_prozent: 25,   // % der nutzbaren Füllung -> gelb
-  alarm_prozent: 12,  // % der nutzbaren Füllung -> rot
   betankung: true,    // Betankungsformular anbieten
   verlauf: true,      // Restverlauf der kommenden Monate zeichnen
   preisverlauf: true, // Preisentwicklung der eingetragenen Lieferungen
@@ -610,11 +611,13 @@ class LpgTankCard extends HTMLElement {
     const nutzbar = a.nutzbares_volumen || nenn * 0.85;
     const reserve = a.reserve || 0;
     const prozent = zahl(this._zustand("inhalt_prozent"), (liter / Math.max(nenn, 1)) * 100);
-    const nutzProzent = zahl(this._zustand("inhalt_nutzbar"), (liter / Math.max(nutzbar, 1)) * 100);
 
+    // Rot hängt an der Reserve statt an einer eigenen Zahl – sonst könnten
+    // Farbe und Bestellfrist auseinanderlaufen. Gelb ist einstellbar.
+    const warnAb = a.warnschwelle_prozent != null ? Number(a.warnschwelle_prozent) : 30;
     const farbe =
-      nutzProzent <= c.alarm_prozent ? "var(--lpg-alarm)"
-      : nutzProzent <= c.warn_prozent ? "var(--lpg-warn)"
+      (reserve > 0 && liter <= reserve) ? "var(--lpg-alarm)"
+      : (prozent <= warnAb) ? "var(--lpg-warn)"
       : "var(--lpg-gut)";
     this.style.setProperty("--lpg-farbe", farbe);
 
@@ -656,12 +659,14 @@ class LpgTankCard extends HTMLElement {
     const proTag = zahl(this._zustand("tagesverbrauch"), null);
 
     const reserveAm = this._datum("reserve_am");
+    const jahr = zahl(this._zustand("jahresverbrauch"), null);
     const kacheln = [
       { label: "Restenergie", wert: this._fmt(energie, 0, "kWh"),
         zusatz: wert !== null ? this._fmt(wert, 0, "EUR") : "", kennung: "restenergie" },
       { label: "Ø Verbrauch", wert: this._fmt(proTag, 1, "L/d"),
-        zusatz: proTag !== null ? this._fmt(proTag * 30, 0, "L/Monat") : "",
-        kennung: "tagesverbrauch" },
+        zusatz: jahr !== null ? `erwartet ${this._fmt(jahr, 0, "L/Jahr")}`
+          : (proTag !== null ? this._fmt(proTag * 30, 0, "L/Monat") : ""),
+        kennung: jahr !== null ? "jahresverbrauch" : "tagesverbrauch" },
       { label: "Reichweite", wert: reichweite !== null ? this._fmt(reichweite, 0, "Tage") : "–",
         zusatz: reichweite !== null ? `≈ ${this._fmt(reichweite / 30.44, 1)} Monate` : "",
         kennung: "reichweite" },
@@ -769,50 +774,75 @@ class LpgTankCard extends HTMLElement {
     const block = this._el.preisblock;
     const svg = this._el.preise;
     if (!block || !svg) return;
+    const c = this._config;
 
-    const historie = (letzte && letzte.attributes && letzte.attributes.lieferungen) || [];
-    const punkte = historie
-      .filter((l) => l && l.preis_pro_liter != null && !isNaN(parseFloat(l.preis_pro_liter)))
-      .map((l) => ({ datum: this._parse(l.datum), preis: parseFloat(l.preis_pro_liter),
-                     liter: l.liter }))
-      .filter((l) => l.datum);
+    // Linie: bevorzugt die Langzeitstatistik des konfigurierten Preis-Sensors,
+    // sonst die eigenen Lieferungen. Die Betankungen liegen als Punkte oben
+    // drauf - man sieht damit, ob man über oder unter dem Verlauf gekauft hat.
+    const attr = (this._zustand("gaspreis") || {}).attributes || {};
+    const statistik = (attr.preisverlauf || [])
+      .map((p) => ({ t: this._monat(p.monat), preis: parseFloat(p.preis) }))
+      .filter((p) => p.t && !isNaN(p.preis));
 
-    if (!this._config.preisverlauf || punkte.length < 2) { block.hidden = true; return; }
+    const lieferungen = ((letzte && letzte.attributes && letzte.attributes.lieferungen) || [])
+      .map((l) => ({
+        datum: l && l.datum ? this._parse(l.datum) : null,
+        preis: parseFloat(l && l.preis_pro_liter),
+        liter: l && l.liter,
+      }))
+      .filter((l) => l.datum && !isNaN(l.preis))
+      .map((l) => ({ t: l.datum.getTime(), preis: l.preis, liter: l.liter }));
+
+    const ausStatistik = statistik.length >= 2;
+    const linie = (ausStatistik ? statistik : lieferungen).slice().sort((a, b) => a.t - b.t);
+    if (!c.preisverlauf || linie.length < 2) { block.hidden = true; return; }
     block.hidden = false;
 
-    const preise = punkte.map((p) => p.preis);
+    const alle = linie.concat(lieferungen);
+    const tMin = Math.min(...alle.map((p) => p.t));
+    const tMax = Math.max(...alle.map((p) => p.t));
+    const tSpanne = Math.max(tMax - tMin, 86400000);
+    const preise = alle.map((p) => p.preis);
     const min = Math.min(...preise), max = Math.max(...preise);
     const spanne = Math.max(max - min, 0.01);
+
     const B = 420, H = 104, l = 34, r = 8, o = 12, u = 20;
-    const x = (i) => l + (i / (punkte.length - 1)) * (B - l - r);
+    const x = (t) => l + ((t - tMin) / tSpanne) * (B - l - r);
     const y = (v) => o + (1 - (v - min + spanne * 0.15) / (spanne * 1.3)) * (H - o - u);
 
-    const linie = punkte.map((p, i) => `${i ? "L" : "M"} ${x(i).toFixed(1)},${y(p.preis).toFixed(1)}`).join(" ");
-    const schnitt = preise.reduce((a, b) => a + b, 0) / preise.length;
+    const pfad = linie
+      .map((p, i) => `${i ? "L" : "M"} ${x(p.t).toFixed(1)},${y(p.preis).toFixed(1)}`)
+      .join(" ");
+    const schnitt = linie.reduce((a, p) => a + p.preis, 0) / linie.length;
 
-    const dots = punkte.map((p, i) =>
-      `<circle class="${i === punkte.length - 1 ? "p-punkt-letzt" : "p-punkt"}" ` +
-      `cx="${x(i).toFixed(1)}" cy="${y(p.preis).toFixed(1)}" r="${i === punkte.length - 1 ? 4.5 : 3}">` +
-      `<title>${this._datumText(p.datum)}: ${this._fmt(p.preis, 3, "EUR/L")}` +
+    const punkte = lieferungen.map((p) =>
+      `<circle class="p-punkt-letzt" cx="${x(p.t).toFixed(1)}" cy="${y(p.preis).toFixed(1)}" r="4">` +
+      `<title>${this._datumText(new Date(p.t))}: ${this._fmt(p.preis, 3, "EUR/L")}` +
       `${p.liter ? ` · ${this._fmt(p.liter, 0, "L")}` : ""}</title></circle>`).join("");
 
-    const beschriftung = punkte.map((p, i) => {
-      if (i !== 0 && i !== punkte.length - 1) return "";
-      const lang = (this._hass.locale && this._hass.locale.language) || "de";
-      return `<text class="p-text" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${
-        i === 0 ? "start" : "end"}">${p.datum.toLocaleDateString(lang,
-          { month: "2-digit", year: "2-digit" })}</text>`;
-    }).join("");
+    const lang = (this._hass.locale && this._hass.locale.language) || "de";
+    const kurz = (t) => new Date(t).toLocaleDateString(lang, { month: "2-digit", year: "2-digit" });
 
     svg.innerHTML = `
       <line class="p-schnitt" x1="${l}" y1="${y(schnitt).toFixed(1)}" x2="${B - r}" y2="${y(schnitt).toFixed(1)}"/>
       <text class="p-text" x="${l - 4}" y="${(y(max) + 3).toFixed(1)}" text-anchor="end">${this._fmt(max, 2)}</text>
       <text class="p-text" x="${l - 4}" y="${(y(min) + 3).toFixed(1)}" text-anchor="end">${this._fmt(min, 2)}</text>
-      <path class="p-linie" d="${linie}"/>${dots}${beschriftung}`;
+      <path class="p-linie" d="${pfad}"/>${punkte}
+      <text class="p-text" x="${l}" y="${H - 6}">${kurz(tMin)}</text>
+      <text class="p-text" x="${B - r}" y="${H - 6}" text-anchor="end">${kurz(tMax)}</text>`;
 
-    this._el["preis-spanne"].textContent =
-      `${punkte.length} Lieferungen · Ø ${this._fmt(schnitt, 3, "EUR/L")}`;
+    const anzahl = lieferungen.length;
+    this._el["preis-spanne"].textContent = ausStatistik
+      ? `Statistik · ${anzahl} ${anzahl === 1 ? "Lieferung" : "Lieferungen"} · Ø ${this._fmt(schnitt, 3, "EUR/L")}`
+      : `${anzahl} ${anzahl === 1 ? "Lieferung" : "Lieferungen"} · Ø ${this._fmt(schnitt, 3, "EUR/L")}`;
   }
+
+  /** "2024-01" auf die Monatsmitte legen, damit die Punkte mittig sitzen. */
+  _monat(text) {
+    const treffer = /^(\d{4})-(\d{2})$/.exec(String(text || ""));
+    return treffer ? new Date(Number(treffer[1]), Number(treffer[2]) - 1, 15).getTime() : null;
+  }
+
 
   /** "in 74 Tagen" bzw. "heute" / "überfällig seit 3 Tagen". */
   _inTagen(d, ueberfaellig = "vorbei") {

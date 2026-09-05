@@ -15,10 +15,12 @@ CONF_LITER_PER_M3: Final = "liter_per_m3"
 CONF_KWH_PER_LITER: Final = "kwh_per_liter"
 CONF_PRICE: Final = "price_per_liter"
 CONF_PRICE_ENTITY: Final = "price_entity"
+CONF_PRICE_STATS: Final = "price_stats_entity"
 CONF_RESERVE: Final = "reserve"
 CONF_LEAD_TIME: Final = "lead_time"
 CONF_PROFILE_YEARS: Final = "profile_years"
 CONF_CORRECTION: Final = "correction"
+CONF_WARN_PERCENT: Final = "warn_percent"
 
 UNIT_AUTO: Final = "auto"
 UNIT_M3: Final = "m3"
@@ -37,6 +39,7 @@ DEFAULT_RESERVE: Final = 970.0          # L – 20 % von 4850 L
 DEFAULT_LEAD_TIME: Final = 21           # Tage Vorlaufzeit der Lieferung
 DEFAULT_PROFILE_YEARS: Final = 2
 DEFAULT_CORRECTION: Final = 100.0       # %
+DEFAULT_WARN_PERCENT: Final = 30.0      # % der Tankuhr – darunter wird die Karte gelb
 
 # Typische deutsche Heizkurve, Anteil am Jahresverbrauch je Monat in %.
 # Dient als Form für Monate, für die noch keine Messwerte vorliegen.
@@ -71,8 +74,6 @@ ATTR_PERCENT: Final = "prozent"
 CARD_URL: Final = "/fluessiggas/lpg-tank-card.js"
 CARD_FILENAME: Final = "lpg-tank-card.js"
 
-#: Einheiten, in denen ein vorhandener Preis-Helfer stehen kann
-PRICE_UNITS_VOLUME: Final = ("m³", "m3", "eur/m³", "eur/m3", "€/m³", "€/m3")
 #: Domains, in die die Integration einen Preis zurückschreiben darf
 PRICE_WRITABLE_DOMAINS: Final = ("input_number", "number")
 

@@ -144,22 +144,27 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     Damit ist nach der Installation über HACS kein manueller Eintrag unter
     Einstellungen → Dashboards → Ressourcen mehr nötig.
     """
-    if hass.data.get(KARTE_REGISTRIERT):
-        return
-    hass.data[KARTE_REGISTRIERT] = True
+    if not hass.data.get(KARTE_REGISTRIERT):
+        pfad = Path(__file__).parent / "frontend" / CARD_FILENAME
+        # Dateizugriff gehört nicht in den Event-Loop
+        if not await hass.async_add_executor_job(pfad.is_file):
+            _LOGGER.warning("Karte %s nicht gefunden – sie wird nicht eingebunden", pfad)
+            return
+        # Erst nach der Prüfung merken, sonst bliebe ein einmaliger Fehlschlag
+        # für den Rest der Laufzeit hängen.
+        hass.data[KARTE_REGISTRIERT] = True
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(CARD_URL, str(pfad), cache_headers=False)]
+        )
+        add_extra_js_url(hass, KARTE_RESSOURCE)
+        _LOGGER.debug("Lovelace-Karte unter %s eingebunden", KARTE_RESSOURCE)
 
-    pfad = Path(__file__).parent / "frontend" / CARD_FILENAME
-    # Dateizugriff gehört nicht in den Event-Loop
-    if not await hass.async_add_executor_job(pfad.is_file):
-        _LOGGER.warning("Karte %s nicht gefunden – sie wird nicht eingebunden", pfad)
-        return
-
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(CARD_URL, str(pfad), cache_headers=False)]
-    )
-    add_extra_js_url(hass, KARTE_RESSOURCE)
+    # Die Ressource dagegen bei jeder Einrichtung prüfen: Route und Zusatzmodul
+    # gelten für die ganze Laufzeit, der Ressourceneintrag aber wird beim
+    # Entfernen des letzten Tanks gelöscht. Ohne diese Trennung bekäme man nach
+    # "entfernen und neu hinzufügen" keine Ressource mehr - und damit die Karte
+    # nur noch über den gecachten Weg, also in der alten Version.
     await _async_register_resource(hass)
-    _LOGGER.debug("Lovelace-Karte unter %s eingebunden", KARTE_RESSOURCE)
 
 
 async def _async_register_resource(hass: HomeAssistant) -> None:

@@ -37,9 +37,11 @@ from .const import (
     CONF_MAX_FILL,
     CONF_PRICE,
     CONF_PRICE_ENTITY,
+    CONF_PRICE_STATS,
     CONF_PROFILE_YEARS,
     CONF_RESERVE,
     CONF_SOURCE_UNIT,
+    CONF_WARN_PERCENT,
     CONF_SOURCES,
     DEFAULT_CAPACITY,
     DEFAULT_CORRECTION,
@@ -48,9 +50,9 @@ from .const import (
     DEFAULT_LITER_PER_M3,
     DEFAULT_MAX_FILL,
     DEFAULT_PRICE,
-    PRICE_UNITS_VOLUME,
     PRICE_WRITABLE_DOMAINS,
     DEFAULT_PROFILE_YEARS,
+    DEFAULT_WARN_PERCENT,
     DEFAULT_RESERVE,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -65,6 +67,7 @@ from .const import (
     UNIT_M3,
 )
 from .forecast import Forecast, Profile, build_profile, simulate
+from .units import normalisiere, price_factor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,6 +128,8 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         self._profile: Profile | None = None
         self._profile_read: datetime | None = None
         self._profile_task = None
+        self._price_history: list[dict[str, Any]] = []
+        self._price_stats_unit: str = ""
         self._units: dict[str, str] = {}
         self._units_read: datetime | None = None
         self._gemeldet: set[str] = set()
@@ -159,9 +164,29 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         return float(self.option(CONF_KWH_PER_LITER, DEFAULT_KWH_PER_LITER))
 
     @property
+    def warn_percent(self) -> float:
+        """Ab diesem Anteil der Tankuhr färbt die Karte gelb."""
+        return float(self.option(CONF_WARN_PERCENT, DEFAULT_WARN_PERCENT))
+
+    @property
     def price_entity(self) -> str | None:
         """Optionaler vorhandener Preis-Helfer in Home Assistant."""
         return self.option(CONF_PRICE_ENTITY, None) or None
+
+    @property
+    def price_stats_entity(self) -> str | None:
+        """Sensor, aus dessen Langzeitstatistik der Preisverlauf gezeichnet wird."""
+        return self.option(CONF_PRICE_STATS, None) or None
+
+    @property
+    def price_stats_unit(self) -> str:
+        """Einheit, in der die Preisstatistik gelesen wurde – zur Kontrolle."""
+        return normalisiere(self._price_stats_unit)
+
+    @property
+    def price_history(self) -> list[dict[str, Any]]:
+        """Monatlicher Preisverlauf in EUR/L, aus der Langzeitstatistik."""
+        return self._price_history
 
     @property
     def price(self) -> float:
@@ -172,13 +197,28 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             except (TypeError, ValueError):
                 wert = None
             if wert is not None:
-                return wert / self.liter_per_m3 if self._price_is_volume(zustand) else wert
+                return wert * self._helper_factor(zustand)
         return float(self._data.get(STORE_PRICE, self.option(CONF_PRICE, DEFAULT_PRICE)))
 
-    def _price_is_volume(self, zustand: Any) -> bool:
-        """Steht der fremde Preis je m³ statt je Liter?"""
-        einheit = (zustand.attributes.get("unit_of_measurement") or "").strip().lower()
-        return any(marke in einheit for marke in PRICE_UNITS_VOLUME)
+    def _helper_factor(self, zustand: Any) -> float:
+        """Umrechnung des Preis-Helfers auf EUR je Liter."""
+        einheit = zustand.attributes.get("unit_of_measurement")
+        faktor, erkannt = price_factor(einheit, self.liter_per_m3, self.kwh_per_liter)
+        if not erkannt:
+            self._einheit_melden(zustand.entity_id, einheit)
+        return faktor
+
+    def _einheit_melden(self, entity_id: str, einheit: str | None) -> None:
+        """Unbekannte Preiseinheit einmalig melden statt still falsch zu rechnen."""
+        marke = f"einheit:{entity_id}"
+        if marke in self._gemeldet:
+            return
+        self._gemeldet.add(marke)
+        _LOGGER.warning(
+            "Einheit '%s' von %s ist unbekannt; der Wert wird als EUR je Liter "
+            "gelesen. Bekannt sind EUR/L, EUR/m³, EUR/kWh und die ct-Varianten",
+            einheit, entity_id,
+        )
 
     @callback
     def async_track_price_source(self) -> None:
@@ -214,9 +254,8 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         entity_id = self.price_entity
         if entity_id and entity_id.split(".")[0] in PRICE_WRITABLE_DOMAINS:
             zustand = self.hass.states.get(entity_id)
-            wert = preis * self.liter_per_m3 if (
-                zustand is not None and self._price_is_volume(zustand)
-            ) else preis
+            faktor = self._helper_factor(zustand) if zustand is not None else 1.0
+            wert = preis / faktor if faktor else preis
             await self.hass.services.async_call(
                 entity_id.split(".")[0], "set_value",
                 {"entity_id": entity_id, "value": round(wert, 4)}, blocking=True,
@@ -415,6 +454,68 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         )
         return profil
 
+    async def _async_read_price_history(self) -> list[dict[str, Any]]:
+        """Monatswerte des Preis-Sensors aus der Langzeitstatistik holen.
+
+        Nur lesend – der Sensor gehört weiterhin dem, der ihn bereitstellt.
+        Steht er in EUR/m³, wird mit dem kalibrierten Faktor in EUR/L
+        umgerechnet, damit der Verlauf zur übrigen Anzeige passt.
+        """
+        if not (entity_id := self.price_stats_entity):
+            return []
+
+        recorder = get_instance(self.hass)
+        start = dt_util.utcnow() - timedelta(days=365 * 6)
+        zeilen = await recorder.async_add_executor_job(
+            statistics_during_period,
+            self.hass, start, None, {entity_id}, "month", None, {"mean", "state"},
+        )
+        reihe = zeilen.get(entity_id) or []
+        if not reihe:
+            _LOGGER.debug("Keine Preisstatistik für %s gefunden", entity_id)
+            return []
+
+        faktor = await self._async_price_stats_factor(entity_id)
+        verlauf: list[dict[str, Any]] = []
+        for zeile in reihe:
+            wert = zeile.get("mean")
+            if wert is None:
+                wert = zeile.get("state")
+            if wert is None:
+                continue
+            zeitpunkt = dt_util.as_local(dt_util.utc_from_timestamp(zeile["start"]))
+            verlauf.append(
+                {
+                    "monat": f"{zeitpunkt.year:04d}-{zeitpunkt.month:02d}",
+                    "preis": round(float(wert) * faktor, 4),
+                }
+            )
+        return verlauf[-72:]
+
+    async def _async_price_stats_factor(self, entity_id: str) -> float:
+        """Umrechnung der Preisstatistik auf EUR je Liter.
+
+        Die Einheit kommt aus den Statistik-Metadaten, nicht aus der Anzeige –
+        gelesen werden die Statistikwerte schließlich auch in dieser Einheit.
+        """
+        try:
+            metadaten = await async_list_statistic_ids(self.hass, {entity_id})
+        except Exception:  # pragma: no cover - Recorder noch nicht bereit
+            metadaten = []
+        einheit = ""
+        for eintrag in metadaten:
+            if eintrag.get("statistic_id") == entity_id:
+                einheit = eintrag.get("statistics_unit_of_measurement") or ""
+                break
+        if not einheit and (zustand := self.hass.states.get(entity_id)):
+            einheit = zustand.attributes.get("unit_of_measurement") or ""
+
+        self._price_stats_unit = einheit
+        faktor, erkannt = price_factor(einheit, self.liter_per_m3, self.kwh_per_liter)
+        if not erkannt:
+            self._einheit_melden(entity_id, einheit)
+        return faktor
+
     # ------------------------------------------------------------ Speicher
 
     async def async_load(self) -> None:
@@ -515,6 +616,14 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         )
 
     async def _async_profil_laden(self) -> None:
+        # Der Preisverlauf hängt am selben Takt: beides sind teure
+        # Statistikabfragen, die nicht in den Aktualisierungspfad gehören.
+        try:
+            self._price_history = await self._async_read_price_history()
+        except Exception:
+            _LOGGER.warning("Preisverlauf konnte nicht gelesen werden", exc_info=True)
+            self._price_history = []
+
         try:
             profil = await self._async_read_profile()
         except Exception:

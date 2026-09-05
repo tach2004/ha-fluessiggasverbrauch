@@ -24,8 +24,10 @@ from .const import (
     CONF_MAX_FILL,
     CONF_PRICE,
     CONF_PRICE_ENTITY,
+    CONF_PRICE_STATS,
     CONF_PROFILE_YEARS,
     CONF_RESERVE,
+    CONF_WARN_PERCENT,
     CONF_SOURCE_UNIT,
     CONF_SOURCES,
     DEFAULT_CAPACITY,
@@ -38,6 +40,7 @@ from .const import (
     DEFAULT_PRICE,
     DEFAULT_PROFILE_YEARS,
     DEFAULT_RESERVE,
+    DEFAULT_WARN_PERCENT,
     DOMAIN,
     SOURCE_UNITS,
     UNIT_AUTO,
@@ -86,6 +89,7 @@ def _optionale_leeren(user_input: dict[str, Any]) -> dict[str, Any]:
     """Nicht ausgefüllte optionale Felder ausdrücklich auf None setzen."""
     daten = dict(user_input)
     daten.setdefault(CONF_PRICE_ENTITY, None)
+    daten.setdefault(CONF_PRICE_STATS, None)
     return daten
 
 
@@ -108,7 +112,13 @@ def _details_schema() -> vol.Schema:
                     domain=["input_number", "number"], multiple=False
                 )
             ),
+            # Nur gelesen, deshalb hier ausdrücklich ein Sensor: aus dessen
+            # Langzeitstatistik zeichnet die Karte den Preisverlauf.
+            vol.Optional(CONF_PRICE_STATS): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor", multiple=False)
+            ),
             vol.Required(CONF_RESERVE, default=DEFAULT_RESERVE): _zahl(0, 5000, 10, "L"),
+            vol.Required(CONF_WARN_PERCENT, default=DEFAULT_WARN_PERCENT): _zahl(0, 100, 1, "%"),
             vol.Required(CONF_LEAD_TIME, default=DEFAULT_LEAD_TIME): _zahl(0, 180, 1, "d"),
             vol.Required(CONF_PROFILE_YEARS, default=DEFAULT_PROFILE_YEARS): _zahl(1, 10, 1, "a"),
             vol.Required(CONF_CORRECTION, default=DEFAULT_CORRECTION): _zahl(25, 250, 1, "%"),
