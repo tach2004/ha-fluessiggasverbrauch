@@ -183,6 +183,15 @@ window.addEventListener("load", () => {
     karte.setConfig({ type: "custom:lpg-tank-card" });
     karte.hass = hassMit(titel.split(" ")[0].toLowerCase(), liter, tage);
     // #formular bzw. #nachtragen öffnet zum Ansehen das Betankungsformular
+    if (location.hash.includes("marker")) {
+      // erst nach dem Layout, vorher hat das SVG noch keine Breite
+      setTimeout(() => {
+        const svg = karte.shadowRoot.getElementById("preise");
+        const b = svg.getBoundingClientRect();
+        svg.dispatchEvent(new PointerEvent("pointermove",
+          { clientX: b.left + b.width * 0.62, clientY: b.top + 20, bubbles: true }));
+      }, 400);
+    }
     if (location.hash.includes("formular") || location.hash.includes("nachtragen")) {
       const w = karte.shadowRoot;
       w.getElementById("knopf-form").click();

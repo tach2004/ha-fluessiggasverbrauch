@@ -68,6 +68,10 @@ Reserve erreicht ist, **gelb** unterhalb der einstellbaren *Warnschwelle*
 (Vorgabe 30 % der Tankuhr). Rot hat bewusst keine eigene Einstellung – sonst
 könnten Farbe und Bestellfrist auseinanderlaufen.
 
+Im Preisdiagramm trägt jede Betankung ihr Datum an der Achse, und ein Zeiger
+darüber – Maus oder Finger – blendet ein Fadenkreuz mit Datum, Preis und
+Liefermenge ein, wie in den Verlaufsdiagrammen von Home Assistant.
+
 Die Karte zeigt sechs Kennzahlen unter dem Tank – Restenergie, Ø Verbrauch,
 Reichweite, **Reserve erreicht**, voraussichtlich leer und Bestellfrist – sowie
 darunter die Preisentwicklung, sobald zwei Lieferungen mit Preis eingetragen sind.

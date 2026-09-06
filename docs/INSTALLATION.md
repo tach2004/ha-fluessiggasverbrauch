@@ -175,6 +175,7 @@ sonst passiert das alle sechs Stunden von allein.
 | Füllstand sinkt nicht | Falscher Quellsensor – prüfe, ob *Verbrauch seit Betankung* steigt. |
 | Füllstand sinkt zu schnell | Faktor L/m³ – bei der nächsten Betankung die Tankuhr vorher angeben. |
 | Reichweite `unknown` | Rechnerisch mehr als sechs Jahre, oder Jahresverbrauch 0. |
+| Karte erscheint sporadisch nicht | Sollte seit 1.4.0 behoben sein: Die Kartendatei wird jetzt vom Browser zwischengespeichert. Das Frontend gibt einer Custom Card nur zwei Sekunden, und ohne Cache wurde sie bei jedem Seitenaufruf neu geladen. |
 | Karte nicht im Picker, „custom element doesn't exist" | Einmalig nach dem Update auf 1.2.0: Der Service Worker des Frontends liefert Seiten aus einem 24-Stunden-Cache. In der Companion-App *Einstellungen → Companion App → Frontend-Cache zurücksetzen*, im Browser Strg+F5 bzw. Websitedaten löschen. Ab 1.2.0 kommt die Karte über die Ressourcenliste (Websocket, nicht gecacht) und das Problem verschwindet. |
 | „Keine Integration gefunden" | Der Tank ist noch nicht eingerichtet. |
 | Meldung „Statistiksumme gesunken" | Die Statistik der Quelle wurde gelöscht oder neu aufgebaut; die Integration setzt den Bezugspunkt nach. Danach den Füllstand einmal korrigieren. |
