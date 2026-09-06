@@ -21,6 +21,7 @@ CONF_LEAD_TIME: Final = "lead_time"
 CONF_PROFILE_YEARS: Final = "profile_years"
 CONF_CORRECTION: Final = "correction"
 CONF_WARN_PERCENT: Final = "warn_percent"
+CONF_UPDATE_MINUTES: Final = "update_minutes"
 
 UNIT_AUTO: Final = "auto"
 UNIT_M3: Final = "m3"
@@ -40,6 +41,7 @@ DEFAULT_LEAD_TIME: Final = 21           # Tage Vorlaufzeit der Lieferung
 DEFAULT_PROFILE_YEARS: Final = 2
 DEFAULT_CORRECTION: Final = 100.0       # %
 DEFAULT_WARN_PERCENT: Final = 30.0      # % der Tankuhr – darunter wird die Karte gelb
+DEFAULT_UPDATE_MINUTES: Final = 15      # min zwischen zwei Statistikabfragen
 
 # Typische deutsche Heizkurve, Anteil am Jahresverbrauch je Monat in %.
 # Dient als Form für Monate, für die noch keine Messwerte vorliegen.
@@ -55,12 +57,21 @@ STORE_BASELINE: Final = "baseline"
 STORE_REFERENCE_AT: Final = "reference_at"
 STORE_DELIVERIES: Final = "deliveries"
 STORE_PRICE: Final = "price"
+STORE_UNDO: Final = "undo"
+
+#: So viele Schritte lassen sich zurücknehmen. Jeder Schritt hält den
+#: kompletten Zustand davor fest, Lieferhistorie eingeschlossen - der Speicher
+#: wächst also mit der Zahl der Lieferungen. Bei realistischen Beständen sind
+#: das einige zehn Kilobyte, geschrieben ein paar Mal im Jahr.
+MAX_UNDO: Final = 10
 
 # ----------------------------------------------------------------- Dienste
 SERVICE_DELIVERY: Final = "betankung"
 SERVICE_SET_LEVEL: Final = "fuellstand_setzen"
 SERVICE_REFRESH_PROFILE: Final = "profil_neu_berechnen"
 SERVICE_ADD_HISTORY: Final = "lieferung_nachtragen"
+SERVICE_DELETE_DELIVERY: Final = "lieferung_loeschen"
+SERVICE_UNDO: Final = "rueckgaengig"
 
 ATTR_LITERS: Final = "liter"
 ATTR_LEVEL_BEFORE: Final = "fuellstand_vorher_prozent"
@@ -69,6 +80,8 @@ ATTR_PRICE: Final = "preis_pro_liter"
 ATTR_DATE: Final = "datum"
 ATTR_CALIBRATE: Final = "kalibrieren"
 ATTR_PERCENT: Final = "prozent"
+ATTR_ENTRY: Final = "eintrag"
+ATTR_ALL: Final = "alle"
 
 # Karte, die von der Integration mit ausgeliefert wird
 CARD_URL: Final = "/fluessiggas/lpg-tank-card.js"

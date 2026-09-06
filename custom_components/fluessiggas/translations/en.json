@@ -30,7 +30,8 @@
           "correction": "Forecast correction factor",
           "price_entity": "Existing price helper (input_number)",
           "warn_percent": "Card warning threshold",
-          "price_stats_entity": "Price statistics (sensor, read only)"
+          "price_stats_entity": "Price statistics (sensor, read only)",
+          "update_minutes": "Statistics query interval"
         },
         "data_description": {
           "liter_per_m3": "Propane at standard conditions: about 3.92. Calibrated automatically on the first refill if you enter the gauge reading beforehand.",
@@ -42,7 +43,8 @@
           "correction": "Scales the entire forecast – useful after insulation work or a rebuild.",
           "price_entity": "Optional. Only a writable number – an input_number or number entity you set yourself. A template sensor explicitly does not work: it computes itself and cannot be written back. If the helper is in EUR/m³ the integration converts to litres. Change it by hand and the integration follows immediately; a price entered on refill is written back into it. Leave empty and the integration provides its own “Gas price” number.",
           "warn_percent": "Below this gauge reading the tank turns yellow on the card. It turns red automatically once the reserve is reached – there is no separate setting for that, so colour and ordering deadline cannot drift apart.",
-          "price_stats_entity": "Optional. A sensor with long-term statistics of your gas price – for instance the one you keep for the energy dashboard. The card draws the price trend from it and converts EUR/m³ to EUR/L itself. The sensor is only ever read, never changed; the price itself still comes from the price helper. Leave empty and the card draws the trend from your recorded deliveries."
+          "price_stats_entity": "Optional. A sensor with long-term statistics of your gas price – for instance the one you keep for the energy dashboard. The card draws the price trend from it and converts EUR/m³ to EUR/L itself. The sensor is only ever read, never changed; the price itself still comes from the price helper. Leave empty and the card draws the trend from your recorded deliveries.",
+          "update_minutes": "How often the level is recalculated from the statistics. 15 minutes is plenty for a tank that lasts months; a longer interval means fewer database queries."
         }
       }
     },
@@ -69,7 +71,8 @@
           "correction": "Forecast correction factor",
           "price_entity": "Existing price helper (input_number)",
           "warn_percent": "Card warning threshold",
-          "price_stats_entity": "Price statistics (sensor, read only)"
+          "price_stats_entity": "Price statistics (sensor, read only)",
+          "update_minutes": "Statistics query interval"
         },
         "data_description": {
           "sources": "The cumulative counters of your heating system, e.g. heating gas and domestic hot water gas. Multiple sensors are added up.",
@@ -85,7 +88,8 @@
           "correction": "Scales the entire forecast – useful after insulation work or a rebuild.",
           "price_entity": "Optional. Only a writable number – an input_number or number entity you set yourself. A template sensor explicitly does not work: it computes itself and cannot be written back. If the helper is in EUR/m³ the integration converts to litres. Change it by hand and the integration follows immediately; a price entered on refill is written back into it. Leave empty and the integration provides its own “Gas price” number.",
           "warn_percent": "Below this gauge reading the tank turns yellow on the card. It turns red automatically once the reserve is reached – there is no separate setting for that, so colour and ordering deadline cannot drift apart.",
-          "price_stats_entity": "Optional. A sensor with long-term statistics of your gas price – for instance the one you keep for the energy dashboard. The card draws the price trend from it and converts EUR/m³ to EUR/L itself. The sensor is only ever read, never changed; the price itself still comes from the price helper. Leave empty and the card draws the trend from your recorded deliveries."
+          "price_stats_entity": "Optional. A sensor with long-term statistics of your gas price – for instance the one you keep for the energy dashboard. The card draws the price trend from it and converts EUR/m³ to EUR/L itself. The sensor is only ever read, never changed; the price itself still comes from the price helper. Leave empty and the card draws the trend from your recorded deliveries.",
+          "update_minutes": "How often the level is recalculated from the statistics. 15 minutes is plenty for a tank that lasts months; a longer interval means fewer database queries."
         }
       }
     },
@@ -220,6 +224,28 @@
     "profil_neu_berechnen": {
       "name": "Recalculate monthly profile",
       "description": "Re-reads the monthly consumption of recent years from long-term statistics."
+    },
+    "lieferung_loeschen": {
+      "name": "Delete history entry",
+      "description": "Removes entries from the delivery history. The fill level stays untouched – use 'Undo' to take back a wrong refill.",
+      "fields": {
+        "eintrag": {
+          "name": "Entry ID",
+          "description": "The 'id' of the entry, as listed in the attribute 'lieferungen' of the last-refill sensor."
+        },
+        "datum": {
+          "name": "Date",
+          "description": "Deletes every entry with this date."
+        },
+        "alle": {
+          "name": "All",
+          "description": "Clears the entire delivery history."
+        }
+      }
+    },
+    "rueckgaengig": {
+      "name": "Undo",
+      "description": "Takes back the last change (refill, gauge reading, backdated delivery or deletion) including fill level and reference point. Up to ten steps back."
     }
   }
 }

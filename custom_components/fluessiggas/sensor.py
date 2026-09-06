@@ -57,6 +57,7 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
             "reserve": c.reserve,
             # von der Karte für die Einfärbung genutzt
             "warnschwelle_prozent": c.warn_percent,
+            "abfrageintervall_min": c.update_minutes,
         },
     ),
     TankSensorDescription(
@@ -177,7 +178,11 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         ),
         attrs_fn=lambda s, c: {
             **(s.last_delivery or {}),
+            # Jeder Eintrag trägt eine "id" – damit spricht die Karte (und der
+            # Dienst lieferung_loeschen) genau einen Eintrag an.
             "lieferungen": c.deliveries[-12:],
+            "rueckgaengig": c.undo_next,
+            "rueckgaengig_schritte": len(c.undo_steps),
         },
     ),
 )

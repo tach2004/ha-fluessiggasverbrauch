@@ -117,3 +117,30 @@ profil_neu_berechnen:
     entity:
       integration: fluessiggas
       domain: sensor
+
+lieferung_loeschen:
+  target:
+    entity:
+      integration: fluessiggas
+      domain: sensor
+  fields:
+    eintrag:
+      required: false
+      example: a1b2c3d4
+      selector:
+        text:
+    datum:
+      required: false
+      selector:
+        date:
+    alle:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+rueckgaengig:
+  target:
+    entity:
+      integration: fluessiggas
+      domain: sensor

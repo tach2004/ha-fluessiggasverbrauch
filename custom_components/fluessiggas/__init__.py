@@ -25,8 +25,10 @@ from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ATTR_ALL,
     ATTR_CALIBRATE,
     ATTR_DATE,
+    ATTR_ENTRY,
     ATTR_LEVEL_AFTER,
     ATTR_LEVEL_BEFORE,
     ATTR_LITERS,
@@ -38,8 +40,10 @@ from .const import (
     DOMAIN,
     SERVICE_DELIVERY,
     SERVICE_ADD_HISTORY,
+    SERVICE_DELETE_DELIVERY,
     SERVICE_REFRESH_PROFILE,
     SERVICE_SET_LEVEL,
+    SERVICE_UNDO,
 )
 from .coordinator import TankCoordinator
 
@@ -90,6 +94,14 @@ SET_LEVEL_FIELDS = (
     }
 )
 
+DELETE_FIELDS = (
+    {
+        vol.Optional(ATTR_ENTRY): cv.string,
+        vol.Optional(ATTR_DATE): cv.date,
+        vol.Optional(ATTR_ALL, default=False): cv.boolean,
+    }
+)
+
 TankConfigEntry = ConfigEntry[TankCoordinator]
 
 
@@ -118,6 +130,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: TankConfigEntry) -> bool
 
     coordinator = TankCoordinator(hass, entry)
     await coordinator.async_load()
+    # Vor der ersten Abfrage anmelden: Sonst fiele eine Zählerbewegung, die
+    # genau in dieses Fenster fällt, unter den Tisch, und die Statistik würde
+    # bis zum stündlichen Sicherheitsnetz nicht neu gelesen.
+    coordinator.async_track_sources()
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
@@ -244,9 +260,13 @@ async def _async_remove_resource(hass: HomeAssistant) -> None:
 
 
 def _async_register_services(hass: HomeAssistant) -> None:
-    """Dienste einmalig registrieren."""
-    if hass.services.has_service(DOMAIN, SERVICE_DELIVERY):
-        return
+    """Dienste anmelden.
+
+    Bewusst ohne Abkürzung "ist schon da, also fertig": Nach einem Update über
+    HACS wird die Integration neu geladen, ohne dass Home Assistant neu
+    startet. Ein in diesem Update hinzugekommener Dienst fehlte dann, bis
+    jemand von Hand neu startet. Das erneute Anmelden ist billig.
+    """
 
     def _entry_ids(call: ServiceCall) -> set[str]:
         """Ziel des Dienstaufrufs auf Konfigurationseinträge abbilden.
@@ -332,6 +352,19 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 price=call.data.get(ATTR_PRICE),
             )
 
+    async def lieferung_loeschen(call: ServiceCall) -> None:
+        datum = call.data.get(ATTR_DATE)
+        for coordinator in await _coordinators(call):
+            await coordinator.async_delete_delivery(
+                eintrag=call.data.get(ATTR_ENTRY),
+                datum=datum.isoformat() if datum else None,
+                alle=call.data.get(ATTR_ALL, False),
+            )
+
+    async def rueckgaengig(call: ServiceCall) -> None:
+        for coordinator in await _coordinators(call):
+            await coordinator.async_undo()
+
     async def profil_neu_berechnen(call: ServiceCall) -> None:
         for coordinator in await _coordinators(call):
             await coordinator.async_refresh_profile()
@@ -346,6 +379,13 @@ def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_HISTORY, lieferung_nachtragen,
         schema=_dienst_schema(ADD_HISTORY_FIELDS),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DELETE_DELIVERY, lieferung_loeschen,
+        schema=_dienst_schema(DELETE_FIELDS),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_UNDO, rueckgaengig, schema=_dienst_schema({}),
     )
     hass.services.async_register(
         DOMAIN, SERVICE_REFRESH_PROFILE, profil_neu_berechnen,

@@ -37,7 +37,7 @@ Alles läuft über die Oberfläche, es gibt kein YAML zu editieren:
 | Verbrauchssensoren auswählen (mehrere werden addiert) | Umrechnung m³ → Liter |
 | Einheit (automatisch erkannt: m³, L oder kWh) | Energieinhalt je Liter |
 | Nennvolumen des Tanks | Gaspreis je Liter |
-| Maximaler Füllgrad (bei Flüssiggas 85 %) | Reserve, Vorlaufzeit, Prognosejahre |
+| Maximaler Füllgrad (bei Flüssiggas 85 %) | Reserve, Vorlaufzeit, Prognosejahre, Abfrageintervall |
 
 Danach einmal den Dienst **Füllstand setzen** mit dem abgelesenen Wert der
 mechanischen Tankuhr aufrufen – oder in der Karte oben rechts aufs
@@ -104,6 +104,8 @@ Konfiguration einen eigenen Preis-Helfer angegeben, dann bleibt deiner die Quell
 | `fluessiggas.betankung` | Lieferung eintragen – auch eine Teilbetankung |
 | `fluessiggas.fuellstand_setzen` | Tankuhr abgelesen, Zählung neu starten |
 | `fluessiggas.lieferung_nachtragen` | Zurückliegende Lieferung nur in die Historie schreiben |
+| `fluessiggas.lieferung_loeschen` | Einen Eintrag aus der Lieferhistorie entfernen |
+| `fluessiggas.rueckgaengig` | Die letzte Änderung zurücknehmen, bis zu zehn Schritte weit |
 | `fluessiggas.profil_neu_berechnen` | Monatsprofil sofort neu aus der Statistik lesen |
 
 ### Teilbetankung
@@ -129,7 +131,36 @@ unangetastet. `betankung` mit altem Datum würde dagegen den aktuellen Stand neu
 berechnen – zum Nachtragen ist sie deshalb der falsche Dienst.
 
 In der Karte sitzt das als dritter Reiter im Betankungsformular:
-**Getankt · Tankuhr · Nachtragen**.
+**Getankt · Tankuhr · Nachtragen · Korrigieren**.
+
+### Vertippt? Zwei Wege zurück
+
+Der vierte Reiter **Korrigieren** listet die eingetragenen Lieferungen, jüngste
+zuerst. Beide Wege gibt es auch als Dienst, falls du lieber automatisierst.
+
+**Rückgängig** (`fluessiggas.rueckgaengig`) nimmt die letzte Änderung komplett
+zurück – Betankung, Tankuhr, Nachtrag oder Löschung, jeweils samt Füllstand und
+Bezugspunkt der Zählung. Zehn Schritte weit. Das ist der Weg für „Ich habe mich
+beim Tanken vertippt".
+
+Und zwar auch dann noch, wenn es erst Tage später auffällt: Zurückgeholt wird
+nicht der damalige Füllstand, sondern der damalige *Bezugspunkt*. Der Stand
+rechnet sich daraus neu auf, der Verbrauch der Zwischenzeit bleibt also drin.
+
+**Löschen** (`fluessiggas.lieferung_loeschen`, das ✕ in der Zeile) entfernt
+einen Eintrag nur aus der Historie und damit aus dem Preisverlauf. Der Füllstand
+bleibt, wie er ist – der hängt nicht an dieser Liste, sondern am Referenzstand.
+Gedacht ist das für falsch nachgetragene alte Lieferungen.
+
+Jeder Eintrag hat eine Kennung (`id`), zu sehen im Attribut `lieferungen` des
+Sensors *Letzte Betankung*. Damit trifft der Dienst genau einen Eintrag, auch
+wenn zwei Lieferungen auf denselben Tag fallen. `datum` trifft stattdessen alle
+Einträge dieses Tages, `alle: true` leert die Historie.
+
+Ein Sonderfall bleibt: Ist der Gaspreis an einen eigenen Helfer
+(`input_number`) gebunden, schreibt eine Betankung ihren Preis dorthin. Das
+Rückgängig fasst fremde Entitäten nicht an – den Helfer stellst du bei Bedarf
+selbst zurück.
 
 ## Gaspreis
 

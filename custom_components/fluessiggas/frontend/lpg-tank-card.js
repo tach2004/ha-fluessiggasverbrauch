@@ -36,6 +36,9 @@ const KENNUNGEN = [
   "reichweite", "leer_am", "reserve_am", "bestellen_bis", "letzte_betankung",
 ];
 
+/** Reiter des Eingabeformulars. */
+const MODI = ["liefermenge", "tankuhr", "nachtragen", "verlauf"];
+
 const DEFAULTS = {
   name: null,         // null = Name des Tanks aus Home Assistant
   tank: null,         // tank_id oder Namensteil, nur bei mehreren Tanks nötig
@@ -266,13 +269,16 @@ class LpgTankCard extends HTMLElement {
           border-top: 1px solid var(--divider-color); padding-top: 12px;
           display: flex; flex-direction: column; gap: 10px;
         }
-        .formular[hidden] { display: none; }
-        .schalter { display: flex; gap: 8px; }
+        /* Ein Klassen-Selektor mit display schlägt die Browser-Vorgabe
+           [hidden] { display: none }. Ohne diese Zeile bleibt z. B. das
+           Datumsfeld (.feld) sichtbar, obwohl es hidden gesetzt ist. */
+        [hidden] { display: none !important; }
+        .schalter { display: flex; gap: 6px; flex-wrap: wrap; }
         .schalter button {
-          flex: 1; padding: 8px; border-radius: 10px; cursor: pointer;
+          flex: 1 1 84px; padding: 8px 4px; border-radius: 10px; cursor: pointer;
           border: 1px solid var(--divider-color);
           background: var(--card-background-color); color: var(--primary-text-color);
-          font-family: inherit; font-size: .85rem;
+          font-family: inherit; font-size: .82rem;
         }
         .schalter button[aria-pressed="true"] {
           background: var(--primary-color); color: var(--text-primary-color, #fff);
@@ -286,6 +292,34 @@ class LpgTankCard extends HTMLElement {
           background: var(--card-background-color); color: var(--primary-text-color);
         }
         .hinweis { font-size: .72rem; color: var(--secondary-text-color); }
+
+        .ruecknahme {
+          width: 100%; padding: 9px 12px; border-radius: 10px; cursor: pointer;
+          font-family: inherit; font-size: .85rem; text-align: left;
+          border: 1px solid var(--lpg-warn, #e8a33d);
+          background: var(--card-background-color); color: var(--primary-text-color);
+        }
+        .liste { display: flex; flex-direction: column; gap: 2px; margin: 8px 0; }
+        .liste .leer { font-size: .8rem; color: var(--secondary-text-color); }
+        .zeile {
+          display: flex; align-items: center; gap: 6px; padding: 6px 2px;
+          border-bottom: 1px solid var(--divider-color); font-size: .78rem;
+        }
+        .zeile:last-child { border-bottom: none; }
+        .z-datum {
+          flex: 0 0 auto; white-space: nowrap;
+          color: var(--secondary-text-color); font-variant-numeric: tabular-nums;
+        }
+        .z-text {
+          flex: 1; text-align: right; font-variant-numeric: tabular-nums;
+        }
+        .z-weg {
+          flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px;
+          cursor: pointer; line-height: 1; font-size: .85rem;
+          border: 1px solid var(--divider-color);
+          background: var(--card-background-color); color: var(--lpg-alarm, #e23c34);
+        }
+        .z-weg:hover { background: var(--secondary-background-color); }
         .aktionen { display: flex; gap: 8px; justify-content: flex-end; }
         .aktionen button {
           padding: 8px 16px; border-radius: 10px; cursor: pointer;
@@ -371,6 +405,7 @@ class LpgTankCard extends HTMLElement {
             <button id="m-liefermenge" aria-pressed="true">Getankt</button>
             <button id="m-tankuhr" aria-pressed="false">Tankuhr</button>
             <button id="m-nachtragen" aria-pressed="false">Nachtragen</button>
+            <button id="m-verlauf" aria-pressed="false">Korrigieren</button>
           </div>
 
           <div id="block-liefermenge">
@@ -418,6 +453,18 @@ class LpgTankCard extends HTMLElement {
             </div>
           </div>
 
+          <div id="block-verlauf" hidden>
+            <button id="v-rueckgaengig" class="ruecknahme" hidden></button>
+            <div class="liste" id="v-liste"></div>
+            <div class="hinweis">
+              Löschen entfernt einen Eintrag nur aus dieser Liste und aus dem
+              Preisverlauf – der Füllstand bleibt, wie er ist. Wer sich beim
+              Tanken oder an der Tankuhr vertippt hat, nimmt die Aktion oben
+              zurück: das stellt Füllstand und Zählung mit wieder her, auch
+              Tage später.
+            </div>
+          </div>
+
           <div class="feld" id="block-datum">
             <label for="f-datum">Datum</label>
             <input id="f-datum" type="date">
@@ -436,8 +483,9 @@ class LpgTankCard extends HTMLElement {
     ["titel", "fehler", "grafik", "liquid", "w1", "w2", "t-prozent", "t-liter", "verlauf",
      "marke-max", "marke-max-text", "marke-reserve", "marke-reserve-text",
      "kacheln", "fuss", "formular", "knopf-form", "preisblock", "preise", "preis-spanne",
-     "m-liefermenge", "m-tankuhr", "m-nachtragen",
-     "block-liefermenge", "block-tankuhr", "block-nachtragen", "block-datum",
+     "m-liefermenge", "m-tankuhr", "m-nachtragen", "m-verlauf",
+     "block-liefermenge", "block-tankuhr", "block-nachtragen", "block-verlauf",
+     "block-datum", "v-liste", "v-rueckgaengig",
      "n-liter", "n-preis",
      "f-liter", "f-vorher", "f-preis", "f-prozent", "f-datum", "f-abbrechen", "f-speichern"]
       .forEach((id) => {
@@ -479,16 +527,19 @@ class LpgTankCard extends HTMLElement {
 
     const modus = (m) => {
       this._modus = m;
-      ["liefermenge", "tankuhr", "nachtragen"].forEach((k) => {
+      MODI.forEach((k) => {
         e[`m-${k}`].setAttribute("aria-pressed", String(m === k));
         e[`block-${k}`].hidden = m !== k;
       });
-      // Bei der Tankuhr zählt der Moment des Ablesens, nicht ein wählbares Datum
-      e["block-datum"].hidden = m === "tankuhr";
+      // Bei der Tankuhr zählt der Moment des Ablesens, nicht ein wählbares
+      // Datum; im Verlauf wird nichts eingetragen, sondern nur korrigiert.
+      e["block-datum"].hidden = m === "tankuhr" || m === "verlauf";
+      e["f-speichern"].hidden = m === "verlauf";
+      if (m === "verlauf") this._verlaufListe();
     };
-    ["liefermenge", "tankuhr", "nachtragen"].forEach((k) =>
-      e[`m-${k}`].addEventListener("click", () => modus(k)));
+    MODI.forEach((k) => e[`m-${k}`].addEventListener("click", () => modus(k)));
 
+    e["v-rueckgaengig"].addEventListener("click", () => this._rueckgaengig());
     e["f-speichern"].addEventListener("click", () => this._speichern());
 
     // Fadenkreuz im Preisdiagramm. Einmal gebunden, die Zeichnung darin wird
@@ -540,6 +591,73 @@ class LpgTankCard extends HTMLElement {
     ["f-liter", "f-vorher", "f-preis", "f-prozent", "n-liter", "n-preis"]
       .forEach((k) => { e[k].value = ""; });
     e["knopf-form"].click();
+  }
+
+  /* --------------------------------------------------- Korrigieren */
+
+  /**
+   * Liste der eingetragenen Lieferungen, jüngste zuerst, mit Löschknopf je
+   * Zeile. Angesprochen wird jeder Eintrag über seine "id" aus der
+   * Integration - zwei Lieferungen am selben Tag wären über das Datum
+   * allein nicht zu unterscheiden.
+   */
+  _verlaufListe() {
+    const e = this._el;
+    if (!e["v-liste"]) return;
+    const letzte = this._zustand("letzte_betankung");
+    const attr = (letzte && letzte.attributes) || {};
+    const eintraege = (attr.lieferungen || []).slice().reverse();
+
+    const zurueck = attr.rueckgaengig;
+    e["v-rueckgaengig"].hidden = !zurueck;
+    if (zurueck) e["v-rueckgaengig"].textContent = `↶ Rückgängig: ${zurueck}`;
+
+    if (!eintraege.length) {
+      e["v-liste"].innerHTML =
+        `<div class="leer">Noch keine Lieferung eingetragen.</div>`;
+      return;
+    }
+
+    e["v-liste"].innerHTML = eintraege.map((eintrag, i) => {
+      const teile = [];
+      if (eintrag.liter != null) teile.push(this._fmt(eintrag.liter, 0, "L"));
+      if (eintrag.preis_pro_liter != null) {
+        teile.push(this._fmt(eintrag.preis_pro_liter, 3, "€/L"));
+      }
+      if (eintrag.kosten != null) teile.push(this._fmt(eintrag.kosten, 0, "€"));
+      if (eintrag.nachgetragen) teile.push("nachgetragen");
+      const datum = this._parse(String(eintrag.datum || ""));
+      return `<div class="zeile">
+          <span class="z-datum">${datum ? this._datumText(datum) : "?"}</span>
+          <span class="z-text">${teile.join(" · ") || "ohne Angaben"}</span>
+          <button class="z-weg" data-i="${i}" title="Eintrag löschen"
+                  aria-label="Eintrag löschen">✕</button>
+        </div>`;
+    }).join("");
+
+    e["v-liste"].querySelectorAll(".z-weg").forEach((knopf) => {
+      const eintrag = eintraege[parseInt(knopf.dataset.i, 10)];
+      knopf.addEventListener("click", () => this._loeschen(eintrag, knopf));
+    });
+  }
+
+  _loeschen(eintrag, knopf) {
+    const ziel = this._ent.inhalt;
+    if (!ziel || !eintrag) return;
+    const daten = eintrag.id ? { eintrag: eintrag.id } : { datum: eintrag.datum };
+    this._hass.callService("fluessiggas", "lieferung_loeschen", daten,
+      { entity_id: ziel });
+    // Die Liste zeichnet sich erst mit dem nächsten Zustandsupdate neu; bis
+    // dahin die Zeile abblenden, damit der Klick sichtbar ankommt.
+    const zeile = knopf && knopf.closest(".zeile");
+    if (zeile) zeile.style.opacity = "0.35";
+  }
+
+  _rueckgaengig() {
+    const ziel = this._ent.inhalt;
+    if (!ziel) return;
+    this._hass.callService("fluessiggas", "rueckgaengig", {}, { entity_id: ziel });
+    this._el["v-rueckgaengig"].hidden = true;
   }
 
   _blinken(el) {
@@ -719,6 +837,7 @@ class LpgTankCard extends HTMLElement {
     e.fuss.textContent = teile.join(" · ");
 
     this._preisverlaufZeichnen(letzte);
+    if (this._modus === "verlauf" && this._formOffen) this._verlaufListe();
   }
 
 

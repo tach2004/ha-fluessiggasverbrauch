@@ -120,6 +120,96 @@ springt zum Jahreswechsel auf 0 zurück, die Statistiksumme läuft durch, weil
 Home Assistant den Rücksprung bereits als Zählerreset erkannt und
 herausgerechnet hat.
 
+## Wie oft die Datenbank gefragt wird – und wie wenig
+
+Die Integration **liest** ausschließlich. Sie schreibt keine Zeile in die
+Recorder-Datenbank, ändert kein Schema, räumt nichts auf. Ihr eigener Zustand
+(Referenzstand, Bezugspunkt, Lieferhistorie, Rücknahmeschritte) liegt in
+`.storage/fluessiggas.<eintrag>` – einer JSON-Datei, nicht in der Datenbank.
+
+| Abfrage | Takt | Umfang |
+|---|---|---|
+| `get_last_short_term_statistics` je Quelle | alle 15 min, **nur wenn sich der Zähler bewegt hat** | eine Zeile je Quelle, über den Index |
+| `statistics_during_period`, Monatsprofil | 1× täglich, im Hintergrund | N Jahre je Quelle |
+| `statistics_during_period`, Preisverlauf | 1× täglich, im Hintergrund | bis 6 Jahre, ein Sensor |
+| `async_list_statistic_ids`, Einheiten | alle 12 h, dazu 1× täglich für den Preis-Sensor | Metadatentabelle, wenige Zeilen |
+| `statistics_during_period`, Stundenwerte | nur als Notnagel | siehe unten |
+
+### Die kleine Abfrage: alle 15 Minuten, oft gar nicht
+
+Der Füllstand braucht genau eine Zahl je Quelle: die aktuelle Statistiksumme.
+`get_last_short_term_statistics` holt sie über den Index – eine Zeile, kein
+Suchen. Das ist weniger Last, als ein einziges Verlaufsdiagramm im Dashboard
+erzeugt.
+
+Zwei Bremsen sitzen davor:
+
+**Der Takt.** Der Recorder schreibt die Kurzzeitstatistik alle fünf Minuten;
+häufiger zu fragen kann gar nichts Neues bringen. Für einen Tank, der Monate
+hält, wären selbst fünf Minuten sinnlos genau – die Vorgabe sind deshalb 15.
+Einstellbar in den Optionen (*Abfrageintervall der Statistik*, 5 bis 240 min).
+
+**Der Stillstand.** Die Statistik einer Quelle kann sich nur bewegen, wenn sich
+der Sensor bewegt hat. Die Integration hört deshalb auf die Zustandsänderungen
+der Zählersensoren – nicht um daraus zu rechnen, sondern um zu wissen, wann
+eine Abfrage garantiert dasselbe Ergebnis liefern würde. Steht der Zähler,
+unterbleibt die Abfrage ganz. Im Sommer, wenn die Heizung tagelang aus ist,
+fällt damit praktisch der gesamte Grundtakt weg.
+
+Ein Sicherheitsnetz bleibt: Einmal pro Stunde wird auf jeden Fall gelesen. Das
+fängt die Fälle ab, in denen Statistik ohne Zustandsänderung entsteht –
+importierte Statistik etwa, oder nachträglich korrigierte Summen.
+
+### Die große Abfrage: einmal am Tag, nebenher
+
+Monatsprofil und Preisverlauf sind die teuren Abfragen. Der Grund steckt in der
+Struktur des Recorders: Er führt zwei Tabellen, `statistics_short_term` mit
+Fünf-Minuten-Werten und `statistics` mit Stundenwerten. Monats- und Tageswerte
+gibt es **nicht** fertig – `statistics_during_period` mit `period="month"`
+faltet sie aus den Stundenzeilen zusammen. Zwei Jahre über zwei Quellen sind
+damit rund 35.000 Stundenzeilen, die zu 24 Monatswerten werden. Das ist die
+Größenordnung, nach der du gefragt hast.
+
+Deshalb zwei Vorkehrungen:
+
+1. Die Abfrage läuft **nie** im Aktualisierungspfad, sondern in einer
+   Hintergrundaufgabe. Hängt sie, hängt weder die Karte noch die Einrichtung.
+2. Sie läuft **einmal am Tag**. Mehr wäre Verschwendung: Ein Monatswert ändert
+   sich innerhalb des laufenden Monats nur am Rand, und die Monate davor sind
+   fest. Wer das Ergebnis sofort will, ruft `fluessiggas.profil_neu_berechnen`
+   auf.
+
+Das Ergebnis liegt anschließend im Speicher der Integration. Die Karte fragt
+nie selbst die Datenbank – sie liest nur Attribute von Entitäten.
+
+### Warum nicht einmalig beim Start?
+
+Naheliegend, aber es hielte nicht: Der Preisverlauf bekommt jeden Monat einen
+neuen Punkt, das Monatsprofil wächst mit jedem abgeschlossenen Monat, und wer
+die Zahl der Mittelungsjahre ändert, will das Ergebnis sehen. Eine Instanz, die
+monatelang durchläuft, zeigte sonst dauerhaft veraltete Zahlen. Einmal täglich
+ist der Kompromiss: zwei große Abfragen am Tag statt acht wie vorher, und das
+Ergebnis nie älter als 24 Stunden.
+
+### Der Notnagel
+
+Zweimal wird zusätzlich gelesen, beides selten:
+
+* Liefert die Kurzzeitstatistik nichts – sie reicht nur rund zehn Tage zurück,
+  etwa nach einem längeren Ausfall –, holt ein Griff in die Stundenwerte der
+  letzten 30 Tage den letzten bekannten Stand.
+* Eine Betankung mit zurückliegendem Datum braucht die Statistiksumme von genau
+  diesem Tag. Das ist ein Fenster von 36 Stunden, und es passiert nur, wenn du
+  eine Betankung einträgst.
+
+### Und die SQL-Fehler?
+
+Falls du je Datenbankfehler im Protokoll siehst: Von hier kommen sie nicht.
+Lesende Zugriffe über die Recorder-Schnittstelle können eine Datenbank weder
+beschädigen noch sperren – sie laufen im Executor des Recorders, also auf
+demselben Thread, der ohnehin schreibt. Ein Test dauert eine Minute: Ordner
+`custom_components/fluessiggas` umbenennen, Home Assistant neu starten.
+
 ## Mehr Mittelungsjahre einstellen, als Daten vorhanden sind
 
 Das ist ausdrücklich vorgesehen. Die Einstellung ist eine Obergrenze, kein
@@ -204,6 +294,44 @@ Mit `cache_headers=True` liefert Home Assistant langlebige Cache-Header. Das
 ist hier gefahrlos, weil die URL die Version trägt (`?v=1.4.0`): Nach einem
 Update ändert sich die URL, der Browser holt die Datei neu, und dazwischen
 kommt sie aus dem lokalen Cache statt über das Netz.
+
+## Vertippt: warum Rückgängig und nicht Bearbeiten
+
+Beim Eintragen einer Betankung verstellt die Integration vier Dinge auf einmal:
+den Referenzstand, den Bezugspunkt der Zählung (die Statistiksummen zum
+Zeitpunkt der Lieferung), den Zeitstempel dazu und die Historie. Dazu kommt
+womöglich ein neu kalibrierter Faktor L/m³ und ein zurückgeschriebener Preis.
+
+Eine Bearbeitungsmaske müsste all das rückwärts auseinandernehmen – und der
+Nutzer müsste verstehen, welches Feld was verstellt. Deshalb der andere Weg:
+Vor jeder Änderung wird der Zustand davor weggeschrieben, und *Rückgängig* holt
+ihn komplett zurück. Zehn Schritte tief, ein paar hundert Byte pro Schritt.
+
+Der Reiz daran ist, dass die Rücknahme nicht altert. Zurückgeholt wird nicht
+der damalige Füllstand, sondern der damalige Bezugspunkt – der Stand rechnet
+sich daraus wieder auf. Eine Betankung, die vor drei Tagen falsch eingetragen
+wurde, lässt sich heute zurücknehmen, ohne den Verbrauch dieser drei Tage zu
+verlieren. Danach trägst du sie richtig ein.
+
+Zwei Dinge kann die Rücknahme nicht:
+
+* **Fremde Entitäten.** Ist der Preis an einen `input_number` gebunden,
+  schreibt eine Betankung ihren Preis dorthin. Das gehört jemand anderem, und
+  die Integration stellt es nicht heimlich zurück.
+* **Den kalibrierten Faktor.** Er steht in den Optionen des
+  Konfigurationseintrags, nicht im eigenen Speicher. Wer eine Betankung mit
+  Tankuhr-Angabe zurücknimmt, korrigiert ihn bei Bedarf von Hand.
+
+Davon getrennt steht das **Löschen** eines Historieneintrags. Es räumt nur die
+Liste auf, aus der der Preisverlauf gezeichnet wird, und lässt den Füllstand in
+Ruhe – gedacht für falsch nachgetragene alte Lieferungen. Dass der Füllstand
+davon unberührt bleibt, ist kein Versehen, sondern die Trennung, die schon
+`lieferung_nachtragen` von `betankung` unterscheidet.
+
+Angesprochen wird ein Eintrag über eine Kennung, nicht über seine Position oder
+sein Datum. Zwei Lieferungen am selben Tag sind sonst nicht zu unterscheiden,
+und eine Position verschiebt sich, sobald ein Eintrag herausfällt. Ältere
+Einträge bekommen ihre Kennung beim ersten Laden nachträglich.
 
 ## Gaspreis: vorhandener Helfer oder eigene Entität
 

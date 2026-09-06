@@ -88,6 +88,50 @@ def test_dienstnamen_stimmen_mit_dem_code_ueberein():
     assert felder <= attribute, felder - attribute
 
 
+def test_jeder_dienst_ist_auch_registriert():
+    """services.yaml beschreibt nur die Oberfläche – ohne Registrierung passiert nichts."""
+    dienste = set(yaml.safe_load((INTEGRATION / "services.yaml").read_text(encoding="utf-8")))
+    const = _quelltext("const.py")
+    quelle = _quelltext("__init__.py")
+    for name in dienste:
+        konstante = next(
+            k for k, v in re.findall(r'(SERVICE_\w+): Final = "([a-z_]+)"', const)
+            if v == name
+        )
+        assert re.search(rf"async_register\(\s*\n?\s*DOMAIN, {konstante}\b", quelle), name
+
+
+def test_datenbank_wird_nur_im_koordinator_gelesen():
+    """Alle Statistikabfragen an einer Stelle – sonst ist die Last nicht mehr abschätzbar."""
+    abfragen = ("statistics_during_period", "get_last_short_term_statistics",
+                "async_list_statistic_ids")
+    for datei in ("__init__.py", "sensor.py", "number.py", "config_flow.py", "history.py"):
+        for abfrage in abfragen:
+            assert abfrage not in _quelltext(datei), (datei, abfrage)
+
+    koordinator = _quelltext("coordinator.py")
+    # Jede Abfrage läuft über den Recorder-Thread, nie über eine eigene Verbindung
+    assert koordinator.count("async_add_executor_job") == koordinator.count(
+        "recorder.async_add_executor_job"
+    )
+    # Geschrieben wird in die Datenbank nichts
+    for verboten in ("session.add", "DELETE FROM", "execute(", "async_purge"):
+        assert verboten not in koordinator, verboten
+
+
+def test_regelmaessige_abfrage_geht_ueber_den_zwischenspeicher():
+    """Der Aktualisierungspfad darf nicht an der Ersparnis vorbeilesen."""
+    koordinator = _quelltext("coordinator.py")
+    pfad = koordinator[koordinator.index("async def _async_update_data"):]
+    pfad = pfad[: pfad.index("    def _profil_anfordern")]
+    assert "await self._async_sums()" in pfad
+    assert "_async_current_sums" not in pfad
+
+    # Die teuren Abfragen laufen nebenher, nicht im Aktualisierungspfad
+    for teuer in ("_async_read_profile", "_async_read_price_history"):
+        assert teuer not in pfad, teuer
+
+
 def test_konfigurationsfelder_sind_beschriftet():
     const = _quelltext("const.py")
     schluessel = set(re.findall(r'CONF_\w+: Final = "([a-z_0-9]+)"', const))
@@ -147,6 +191,16 @@ def test_strings_entspricht_englisch():
     assert _json(INTEGRATION / "strings.json") == _json(
         INTEGRATION / "translations" / "en.json"
     )
+
+
+def test_karte_bietet_das_korrigieren_an():
+    """Löschen und Rückgängig müssen aus der Karte erreichbar sein."""
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    assert 'callService("fluessiggas", "lieferung_loeschen"' in karte
+    assert 'callService("fluessiggas", "rueckgaengig"' in karte
+    assert 'id="block-verlauf"' in karte
+    # Die Karte spricht Einträge über ihre Kennung an, nicht über die Position
+    assert "eintrag: eintrag.id" in karte
 
 
 def test_karte_wird_mit_ausgeliefert():
