@@ -63,11 +63,17 @@
     "fuellstand_setzen": {
       "service": "mdi:gauge"
     },
+    "lieferung_loeschen": {
+      "service": "mdi:playlist-remove"
+    },
     "lieferung_nachtragen": {
       "service": "mdi:playlist-plus"
     },
     "profil_neu_berechnen": {
       "service": "mdi:calendar-refresh"
+    },
+    "rueckgaengig": {
+      "service": "mdi:undo-variant"
     }
   }
 }

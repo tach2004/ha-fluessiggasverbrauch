@@ -14,6 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import (
@@ -22,7 +23,9 @@ from homeassistant.components.recorder.statistics import (
     statistics_during_period,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -41,6 +44,7 @@ from .const import (
     CONF_PROFILE_YEARS,
     CONF_RESERVE,
     CONF_SOURCE_UNIT,
+    CONF_UPDATE_MINUTES,
     CONF_WARN_PERCENT,
     CONF_SOURCES,
     DEFAULT_CAPACITY,
@@ -50,6 +54,8 @@ from .const import (
     DEFAULT_LITER_PER_M3,
     DEFAULT_MAX_FILL,
     DEFAULT_PRICE,
+    DEFAULT_UPDATE_MINUTES,
+    MAX_UNDO,
     PRICE_WRITABLE_DOMAINS,
     DEFAULT_PROFILE_YEARS,
     DATA_VERSION,
@@ -62,19 +68,40 @@ from .const import (
     STORE_LEVEL,
     STORE_PRICE,
     STORE_REFERENCE_AT,
+    STORE_UNDO,
     UNIT_AUTO,
     UNIT_KWH,
     UNIT_LITER,
     UNIT_M3,
 )
 from .forecast import Forecast, Profile, build_profile, simulate
+from .history import KeinTreffer, ohne, waehle_eintraege
 from .units import normalisiere, price_factor
 
 _LOGGER = logging.getLogger(__name__)
 
-UPDATE_INTERVAL = timedelta(minutes=5)
-PROFILE_INTERVAL = timedelta(hours=6)
-UNIT_INTERVAL = timedelta(hours=1)
+# Wie oft der Füllstand nachgerechnet wird, steht in den Optionen
+# (CONF_UPDATE_MINUTES, Vorgabe 15 min). Der Recorder schreibt die
+# Kurzzeitstatistik alle fünf Minuten; für einen Tank, der Monate hält, wäre
+# eine feinere Auflösung ohne jeden Nutzen.
+
+#: Monatsprofil und Preisverlauf sind die teuren Abfragen (mehrere Jahre
+#: Statistik). Beide ändern sich nur im Monatstakt - einmal täglich reicht.
+PROFILE_INTERVAL = timedelta(hours=24)
+
+#: Statistik-Metadaten (Einheiten) ändern sich praktisch nie.
+UNIT_INTERVAL = timedelta(hours=12)
+
+#: Nachlauf, bis der Recorder eine Zählerbewegung in die Statistik geschrieben
+#: hat. Solange nach der letzten Bewegung noch nicht abgefragt wurde, wird
+#: weiter abgefragt - danach ist eine Abfrage nachweislich überflüssig.
+STAT_LAG = timedelta(minutes=15)
+
+#: Sicherheitsnetz: Auch ohne jede Zählerbewegung wird einmal pro Stunde
+#: gelesen. Fängt Fälle ab, in denen Statistik ohne Zustandsänderung entsteht
+#: (importierte Statistik, nachträglich korrigierte Summen).
+SUM_MAX_AGE = timedelta(hours=1)
+
 MAX_DELIVERIES = 50
 
 #: Kalibrierung erst ab dieser gezählten Menge – darunter ist der Ablesefehler
@@ -119,13 +146,25 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             hass,
             _LOGGER,
             name=entry.title,
-            update_interval=UPDATE_INTERVAL,
+            update_interval=timedelta(
+                minutes=int(
+                    entry.options.get(
+                        CONF_UPDATE_MINUTES,
+                        entry.data.get(CONF_UPDATE_MINUTES, DEFAULT_UPDATE_MINUTES),
+                    )
+                )
+            ),
         )
         self.entry = entry
         self._store: Store = Store(
             hass, STORAGE_VERSION, STORAGE_KEY.format(entry_id=entry.entry_id)
         )
         self._data: dict[str, Any] = {}
+        self._sums: dict[str, float] = {}
+        self._sums_read: datetime | None = None
+        self._missing: list[str] = []
+        self._sources_changed_at: datetime | None = None
+        self._gespart = 0
         self._profile: Profile | None = None
         self._profile_read: datetime | None = None
         self._profile_task = None
@@ -173,6 +212,11 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
     def warn_percent(self) -> float:
         """Ab diesem Anteil der Tankuhr färbt die Karte gelb."""
         return float(self.option(CONF_WARN_PERCENT, DEFAULT_WARN_PERCENT))
+
+    @property
+    def update_minutes(self) -> int:
+        """Minuten zwischen zwei Statistikabfragen."""
+        return int(self.option(CONF_UPDATE_MINUTES, DEFAULT_UPDATE_MINUTES))
 
     @property
     def price_entity(self) -> str | None:
@@ -225,6 +269,33 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             "gelesen. Bekannt sind EUR/L, EUR/m³, EUR/kWh und die ct-Varianten",
             einheit, entity_id,
         )
+
+    @callback
+    def async_track_sources(self) -> None:
+        """Bewegungen der Zählersensoren mitschreiben.
+
+        Nicht um daraus zu rechnen - der Verbrauch kommt weiterhin aus der
+        Statistik. Sondern um zu wissen, wann eine Abfrage überhaupt etwas
+        Neues bringen kann: Steht der Zähler still, steht auch seine Statistik
+        still, und die Datenbank muss gar nicht erst gefragt werden.
+        """
+        if not self.sources:
+            return
+        self.entry.async_on_unload(
+            async_track_state_change_event(
+                self.hass, self.sources, self._async_source_changed
+            )
+        )
+
+    @callback
+    def _async_source_changed(self, event: Event[EventStateChangedData]) -> None:
+        neu = event.data.get("new_state")
+        if neu is None or neu.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            return
+        alt = event.data.get("old_state")
+        if alt is not None and alt.state == neu.state:
+            return
+        self._sources_changed_at = dt_util.utcnow()
 
     @callback
     def async_track_price_source(self) -> None:
@@ -356,8 +427,32 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
 
     # ------------------------------------------------------------ Statistik
 
+    async def _async_sums(self) -> tuple[dict[str, float], list[str]]:
+        """Summen holen – aus dem Zwischenspeicher, wenn nichts passiert ist.
+
+        Die Kurzzeitstatistik einer Quelle kann sich nur bewegen, wenn sich der
+        Sensor bewegt hat. Lag die letzte Zählerbewegung schon vor der letzten
+        Abfrage (plus Nachlauf für den Recorder), wäre eine neue Abfrage
+        garantiert derselbe Wert – die wird gespart. Im Sommer, wenn die
+        Heizung tagelang steht, sind das nahezu alle Abfragen.
+        """
+        jetzt = dt_util.utcnow()
+        if self._sums_read is not None and not self._missing:
+            frisch = (jetzt - self._sums_read) < SUM_MAX_AGE
+            ruhig = (
+                self._sources_changed_at is None
+                or self._sources_changed_at <= self._sums_read - STAT_LAG
+            )
+            if frisch and ruhig:
+                self._gespart += 1
+                return dict(self._sums), []
+        if self._gespart:
+            _LOGGER.debug("%s Statistikabfragen übersprungen", self._gespart)
+            self._gespart = 0
+        return await self._async_current_sums()
+
     async def _async_current_sums(self) -> tuple[dict[str, float], list[str]]:
-        """Aktuelle kumulierte Statistiksumme je Quelle."""
+        """Aktuelle kumulierte Statistiksumme je Quelle – immer frisch gelesen."""
         recorder = get_instance(self.hass)
         summen: dict[str, float] = {}
         fehlend: list[str] = []
@@ -383,6 +478,10 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             else:
                 summen[entity_id] = wert
                 self._gemeldet.discard(entity_id)
+
+        self._sums = dict(summen)
+        self._missing = list(fehlend)
+        self._sums_read = dt_util.utcnow()
         return summen, fehlend
 
     async def _async_sum_from_long_term(self, entity_id: str) -> float | None:
@@ -526,15 +625,122 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
 
     async def async_load(self) -> None:
         self._data = await self._store.async_load() or {}
+        if self._kennungen_nachtragen():
+            await self._async_save()
 
     async def _async_save(self) -> None:
         await self._store.async_save(self._data)
+
+    def _kennungen_nachtragen(self) -> bool:
+        """Ältere Einträge bekommen nachträglich eine Kennung.
+
+        Ohne sie lässt sich ein einzelner Eintrag nicht eindeutig ansprechen –
+        zwei Lieferungen am selben Tag wären sonst nicht unterscheidbar.
+        """
+        eintraege = self._data.get(STORE_DELIVERIES) or []
+        fehlend = [e for e in eintraege if not e.get("id")]
+        for eintrag in fehlend:
+            eintrag["id"] = self._neue_kennung()
+        return bool(fehlend)
+
+    @staticmethod
+    def _neue_kennung() -> str:
+        return uuid4().hex[:8]
+
+    # ------------------------------------------------------------ Rücknahme
+
+    def _schnappschuss(self, bezeichnung: str) -> None:
+        """Den Zustand vor einer Änderung festhalten.
+
+        Gesichert wird alles, was eine Aktion verstellen kann: Referenzstand,
+        Bezugspunkt der Zählung, Zeitpunkt, Lieferhistorie und der intern
+        gemerkte Preis. Damit wird eine Rücknahme auch dann noch richtig, wenn
+        sie erst Tage später erfolgt – der Füllstand rechnet sich aus dem
+        wiederhergestellten Bezugspunkt neu auf, der Verbrauch dazwischen geht
+        also nicht verloren.
+        """
+        schritte = list(self._data.get(STORE_UNDO) or [])
+        schritte.append(
+            {
+                "was": bezeichnung,
+                "wann": dt_util.utcnow().isoformat(),
+                STORE_LEVEL: self._data.get(STORE_LEVEL),
+                STORE_BASELINE: dict(self._data.get(STORE_BASELINE) or {}),
+                STORE_REFERENCE_AT: self._data.get(STORE_REFERENCE_AT),
+                STORE_DELIVERIES: [dict(e) for e in self._data.get(STORE_DELIVERIES) or []],
+                STORE_PRICE: self._data.get(STORE_PRICE),
+            }
+        )
+        self._data[STORE_UNDO] = schritte[-MAX_UNDO:]
+
+    @property
+    def undo_steps(self) -> list[dict[str, Any]]:
+        """Die zurücknehmbaren Schritte, jüngster zuletzt."""
+        return list(self._data.get(STORE_UNDO) or [])
+
+    @property
+    def undo_next(self) -> str | None:
+        """Kurzbeschreibung dessen, was ein Rückgängig gerade zurücknähme."""
+        schritte = self.undo_steps
+        return str(schritte[-1].get("was")) if schritte else None
+
+    async def async_undo(self) -> str:
+        """Die letzte Änderung zurücknehmen."""
+        schritte = self.undo_steps
+        if not schritte:
+            raise HomeAssistantError("Es gibt nichts zurückzunehmen.")
+        schritt = schritte.pop()
+
+        for schluessel in (STORE_LEVEL, STORE_BASELINE, STORE_REFERENCE_AT,
+                           STORE_DELIVERIES, STORE_PRICE):
+            wert = schritt.get(schluessel)
+            if wert is None:
+                self._data.pop(schluessel, None)
+            else:
+                self._data[schluessel] = wert
+        self._data[STORE_UNDO] = schritte
+        await self._async_save()
+        await self.async_request_refresh()
+
+        was = str(schritt.get("was", "Änderung"))
+        _LOGGER.info("Zurückgenommen: %s", was)
+        return was
+
+    async def async_delete_delivery(
+        self,
+        *,
+        eintrag: str | None = None,
+        datum: str | None = None,
+        alle: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Einträge aus der Lieferhistorie entfernen.
+
+        Bewusst nur die Historie: Der Füllstand hängt nicht an dieser Liste,
+        sondern am Referenzstand. Wer sich beim Tanken vertippt hat, nimmt die
+        Aktion mit ``rueckgaengig`` zurück – das stellt beides her.
+        """
+        vorhanden = self.deliveries
+        try:
+            treffer = waehle_eintraege(
+                vorhanden, eintrag=eintrag, datum=datum, alle=alle
+            )
+        except KeinTreffer as fehler:
+            raise HomeAssistantError(str(fehler)) from fehler
+
+        self._schnappschuss(
+            f"{len(treffer)} Eintrag/Einträge aus der Historie gelöscht"
+        )
+        self._data[STORE_DELIVERIES] = ohne(vorhanden, treffer)
+        await self._async_save()
+        await self.async_request_refresh()
+        _LOGGER.info("%s Eintrag/Einträge aus der Lieferhistorie gelöscht", len(treffer))
+        return treffer
 
     # ------------------------------------------------------------ Aktualisierung
 
     async def _async_update_data(self) -> TankState:
         await self._async_read_units()
-        summen, fehlend = await self._async_current_sums()
+        summen, fehlend = await self._async_sums()
         basis: dict[str, float] = dict(self._data.get(STORE_BASELINE, {}))
         geaendert = False
 
@@ -660,6 +866,7 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         neu = min(max(float(neu), 0.0), self.usable_capacity)
 
         summen, _ = await self._async_current_sums()
+        self._schnappschuss(f"Tankuhr auf {neu:.0f} L gesetzt")
         self._data[STORE_LEVEL] = round(neu, 1)
         self._data[STORE_BASELINE] = summen
         self._data[STORE_REFERENCE_AT] = dt_util.utcnow().isoformat()
@@ -732,6 +939,7 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         neu = min(max(neu, 0.0), self.usable_capacity)
 
         eintrag = {
+            "id": self._neue_kennung(),
             "datum": dt_util.as_local(zeitpunkt).date().isoformat(),
             "liter": round(float(liters), 1) if liters is not None else None,
             "stand_vorher": round(vorher, 1),
@@ -744,6 +952,9 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             "faktor_neu": faktor_neu,
         }
 
+        self._schnappschuss(
+            "Betankung vom {} eingetragen".format(eintrag["datum"])
+        )
         lieferungen = self.deliveries
         lieferungen.append(eintrag)
         self._data[STORE_DELIVERIES] = lieferungen[-MAX_DELIVERIES:]
@@ -783,6 +994,7 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         zerlegen. Hier bleibt beides unangetastet.
         """
         eintrag = {
+            "id": self._neue_kennung(),
             "datum": dt_util.as_local(moment).date().isoformat(),
             "liter": round(float(liters), 1) if liters is not None else None,
             "stand_vorher": None,
@@ -793,6 +1005,9 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             else None,
             "nachgetragen": True,
         }
+        self._schnappschuss(
+            "Lieferung vom {} nachgetragen".format(eintrag["datum"])
+        )
         lieferungen = self.deliveries + [eintrag]
         # nach Datum sortieren, damit der Preisverlauf chronologisch bleibt und
         # "Letzte Betankung" weiterhin die jüngste ist

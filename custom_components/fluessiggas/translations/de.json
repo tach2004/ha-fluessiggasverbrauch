@@ -30,7 +30,8 @@
           "correction": "Korrekturfaktor der Prognose",
           "price_entity": "Vorhandener Preis-Helfer (input_number)",
           "warn_percent": "Warnschwelle der Karte",
-          "price_stats_entity": "Preis-Statistik (Sensor, nur gelesen)"
+          "price_stats_entity": "Preis-Statistik (Sensor, nur gelesen)",
+          "update_minutes": "Abfrageintervall der Statistik"
         },
         "data_description": {
           "liter_per_m3": "Propan im Normzustand: rund 3,92. Wird bei der ersten Betankung automatisch nachkalibriert, wenn du die Tankuhr davor angibst.",
@@ -42,7 +43,8 @@
           "correction": "Skaliert die gesamte Prognose – nützlich nach Dämmung oder Umbau.",
           "price_entity": "Optional. Nur eine beschreibbare Zahl – eine input_number oder eine number-Entität, in die du den Gaspreis selbst einträgst. Ein Template-Sensor geht ausdrücklich nicht: Der berechnet sich selbst und lässt sich nicht zurückschreiben. Steht der Helfer in EUR/m³, rechnet die Integration in Liter um. Änderst du ihn von Hand, folgt die Integration sofort; ein beim Tanken eingegebener Preis wird dorthin zurückgeschrieben. Leer lassen: dann legt die Integration eine eigene Zahl „Gaspreis“ an.",
           "warn_percent": "Unter diesem Wert der Tankuhr färbt sich der Tank in der Karte gelb. Rot wird er automatisch, sobald die Reserve erreicht ist – dafür gibt es keine eigene Einstellung, damit Farbe und Bestellfrist nicht auseinanderlaufen.",
-          "price_stats_entity": "Optional. Ein Sensor mit Langzeitstatistik deines Gaspreises – zum Beispiel der, den du fürs Energiedashboard pflegst. Die Karte zeichnet daraus den Preisverlauf und rechnet EUR/m³ selbst in EUR/L um. Der Sensor wird ausschließlich gelesen und nie verändert; den Preis selbst setzt weiterhin der Preis-Helfer. Leer lassen: dann zeichnet die Karte den Verlauf aus deinen eingetragenen Lieferungen."
+          "price_stats_entity": "Optional. Ein Sensor mit Langzeitstatistik deines Gaspreises – zum Beispiel der, den du fürs Energiedashboard pflegst. Die Karte zeichnet daraus den Preisverlauf und rechnet EUR/m³ selbst in EUR/L um. Der Sensor wird ausschließlich gelesen und nie verändert; den Preis selbst setzt weiterhin der Preis-Helfer. Leer lassen: dann zeichnet die Karte den Verlauf aus deinen eingetragenen Lieferungen.",
+          "update_minutes": "Wie oft der Füllstand aus der Statistik nachgerechnet wird. 15 Minuten sind für einen Tank, der Monate hält, reichlich; ein größerer Wert bedeutet weniger Datenbankabfragen."
         }
       }
     },
@@ -69,7 +71,8 @@
           "correction": "Korrekturfaktor der Prognose",
           "price_entity": "Vorhandener Preis-Helfer (input_number)",
           "warn_percent": "Warnschwelle der Karte",
-          "price_stats_entity": "Preis-Statistik (Sensor, nur gelesen)"
+          "price_stats_entity": "Preis-Statistik (Sensor, nur gelesen)",
+          "update_minutes": "Abfrageintervall der Statistik"
         },
         "data_description": {
           "sources": "Die kumulativen Zähler deiner Heizung, z. B. Heizgas und Warmwassergas. Mehrere Sensoren werden addiert.",
@@ -85,7 +88,8 @@
           "correction": "Skaliert die gesamte Prognose – nützlich nach Dämmung oder Umbau.",
           "price_entity": "Optional. Nur eine beschreibbare Zahl – eine input_number oder eine number-Entität, in die du den Gaspreis selbst einträgst. Ein Template-Sensor geht ausdrücklich nicht: Der berechnet sich selbst und lässt sich nicht zurückschreiben. Steht der Helfer in EUR/m³, rechnet die Integration in Liter um. Änderst du ihn von Hand, folgt die Integration sofort; ein beim Tanken eingegebener Preis wird dorthin zurückgeschrieben. Leer lassen: dann legt die Integration eine eigene Zahl „Gaspreis“ an.",
           "warn_percent": "Unter diesem Wert der Tankuhr färbt sich der Tank in der Karte gelb. Rot wird er automatisch, sobald die Reserve erreicht ist – dafür gibt es keine eigene Einstellung, damit Farbe und Bestellfrist nicht auseinanderlaufen.",
-          "price_stats_entity": "Optional. Ein Sensor mit Langzeitstatistik deines Gaspreises – zum Beispiel der, den du fürs Energiedashboard pflegst. Die Karte zeichnet daraus den Preisverlauf und rechnet EUR/m³ selbst in EUR/L um. Der Sensor wird ausschließlich gelesen und nie verändert; den Preis selbst setzt weiterhin der Preis-Helfer. Leer lassen: dann zeichnet die Karte den Verlauf aus deinen eingetragenen Lieferungen."
+          "price_stats_entity": "Optional. Ein Sensor mit Langzeitstatistik deines Gaspreises – zum Beispiel der, den du fürs Energiedashboard pflegst. Die Karte zeichnet daraus den Preisverlauf und rechnet EUR/m³ selbst in EUR/L um. Der Sensor wird ausschließlich gelesen und nie verändert; den Preis selbst setzt weiterhin der Preis-Helfer. Leer lassen: dann zeichnet die Karte den Verlauf aus deinen eingetragenen Lieferungen.",
+          "update_minutes": "Wie oft der Füllstand aus der Statistik nachgerechnet wird. 15 Minuten sind für einen Tank, der Monate hält, reichlich; ein größerer Wert bedeutet weniger Datenbankabfragen."
         }
       }
     },
@@ -220,6 +224,28 @@
     "profil_neu_berechnen": {
       "name": "Monatsprofil neu berechnen",
       "description": "Liest den Monatsverbrauch der letzten Jahre erneut aus der Langzeitstatistik."
+    },
+    "lieferung_loeschen": {
+      "name": "Historieneintrag löschen",
+      "description": "Entfernt Einträge aus der Lieferhistorie. Der Füllstand bleibt unberührt – eine falsche Betankung nimmst du mit „Rückgängig“ zurück.",
+      "fields": {
+        "eintrag": {
+          "name": "Kennung",
+          "description": "Die „id“ des Eintrags, wie sie im Attribut „lieferungen“ des Sensors „Letzte Betankung“ steht."
+        },
+        "datum": {
+          "name": "Datum",
+          "description": "Löscht jeden Eintrag mit diesem Datum."
+        },
+        "alle": {
+          "name": "Alle",
+          "description": "Leert die komplette Lieferhistorie."
+        }
+      }
+    },
+    "rueckgaengig": {
+      "name": "Rückgängig",
+      "description": "Nimmt die letzte Änderung zurück (Betankung, Tankuhr, Nachtrag oder Löschung) – inklusive Füllstand und Bezugspunkt. Bis zu zehn Schritte weit."
     }
   }
 }

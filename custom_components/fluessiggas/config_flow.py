@@ -30,6 +30,7 @@ from .const import (
     CONF_WARN_PERCENT,
     CONF_SOURCE_UNIT,
     CONF_SOURCES,
+    CONF_UPDATE_MINUTES,
     DEFAULT_CAPACITY,
     DEFAULT_CORRECTION,
     DEFAULT_KWH_PER_LITER,
@@ -40,6 +41,7 @@ from .const import (
     DEFAULT_PRICE,
     DEFAULT_PROFILE_YEARS,
     DEFAULT_RESERVE,
+    DEFAULT_UPDATE_MINUTES,
     DEFAULT_WARN_PERCENT,
     DOMAIN,
     SOURCE_UNITS,
@@ -122,6 +124,12 @@ def _details_schema() -> vol.Schema:
             vol.Required(CONF_LEAD_TIME, default=DEFAULT_LEAD_TIME): _zahl(0, 180, 1, "d"),
             vol.Required(CONF_PROFILE_YEARS, default=DEFAULT_PROFILE_YEARS): _zahl(1, 10, 1, "a"),
             vol.Required(CONF_CORRECTION, default=DEFAULT_CORRECTION): _zahl(25, 250, 1, "%"),
+            # Der Recorder schreibt die Kurzzeitstatistik alle fuenf Minuten;
+            # oefter abzufragen bringt nichts. Wer noch weniger Datenbank-
+            # zugriffe will, stellt hier hoch - ein Tank haelt Monate.
+            vol.Required(CONF_UPDATE_MINUTES, default=DEFAULT_UPDATE_MINUTES): _zahl(
+                5, 240, 5, "min"
+            ),
         }
     )
 

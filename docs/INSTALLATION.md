@@ -62,6 +62,7 @@ bereits herausgerechnet hat.
 | Vorlaufzeit | 21 d | Zeit vom Bestellen bis zum Tankwagen. |
 | Mittelung über Jahre | 2 | Über wie viele Jahre je Kalendermonat gemittelt wird. |
 | Korrekturfaktor | 100 % | Skaliert die ganze Prognose, z. B. nach einer Dämmung. |
+| Abfrageintervall der Statistik | 15 min | Wie oft der Füllstand nachgerechnet wird. Höher = weniger Datenbankzugriffe. Steht der Gaszähler still, wird ohnehin gar nicht gelesen. |
 
 Alles später unter **Konfigurieren** änderbar.
 
@@ -105,6 +106,18 @@ In der Karte aufs Zapfsäulen-Symbol, oder als Dienst `fluessiggas.betankung`:
 | Mit Kalibrierung | zusätzlich `fuellstand_vorher_prozent: 22` |
 | Nachträglich | zusätzlich `datum: 2026-08-14` |
 | Mit Preis | zusätzlich `preis_pro_liter: 0.677` |
+
+### Vertippt?
+
+| Fall | Weg |
+|---|---|
+| Betankung falsch eingetragen | Karte → **Korrigieren** → *Rückgängig* (oder `fluessiggas.rueckgaengig`). Holt Füllstand und Zählung zurück, auch Tage später. |
+| Falsche Tankuhr gesetzt | dasselbe |
+| Alte Lieferung falsch nachgetragen | Karte → **Korrigieren** → ✕ in der Zeile (oder `fluessiggas.lieferung_loeschen` mit `eintrag: <id>`) |
+| Preisverlauf komplett neu aufbauen | `fluessiggas.lieferung_loeschen` mit `alle: true` |
+
+Zehn Schritte lassen sich zurücknehmen. Die Kennungen der Einträge stehen im
+Attribut `lieferungen` des Sensors *Letzte Betankung*.
 
 **Alte Lieferungen nachtragen** (für den Preisverlauf) ist etwas anderes: dafür
 den Reiter *Nachtragen* bzw. den Dienst `fluessiggas.lieferung_nachtragen` mit
