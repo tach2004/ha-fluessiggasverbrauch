@@ -370,6 +370,28 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
     def deliveries(self) -> list[dict[str, Any]]:
         return list(self._data.get(STORE_DELIVERIES, []))
 
+    @property
+    def calibration(self) -> dict[str, Any] | None:
+        """Die letzte Nachkalibrierung des Faktors L/m³.
+
+        Kein eigener Speicher nötig: Jede Betankung, die den Faktor verstellt
+        hat, hält alten und neuen Wert in ihrem Eintrag fest. Die jüngste
+        davon ist die Antwort auf „woher kommt der Wert, der gerade gilt".
+        """
+        for eintrag in reversed(self.deliveries):
+            if eintrag.get("faktor_neu"):
+                return {
+                    "datum": eintrag.get("datum"),
+                    "vorher": eintrag.get("faktor_alt"),
+                    "nachher": eintrag.get("faktor_neu"),
+                }
+        return None
+
+    @property
+    def calibrations(self) -> int:
+        """Wie oft der Faktor bisher nachkalibriert wurde."""
+        return sum(1 for e in self.deliveries if e.get("faktor_neu"))
+
     # ------------------------------------------------------------ Einheiten
 
     async def _async_read_units(self) -> None:

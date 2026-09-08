@@ -32,7 +32,8 @@ const LPG_VERSION = new URL(import.meta.url).searchParams.get("v") || "unbekannt
 /** Kennungen, die die Integration an ihren Entitäten hinterlässt. */
 const KENNUNGEN = [
   "inhalt", "inhalt_prozent", "inhalt_nutzbar", "restenergie", "restwert",
-  "gaspreis", "verbrauch_seit_betankung", "tagesverbrauch", "jahresverbrauch",
+  "gaspreis", "umrechnungsfaktor", "verbrauch_seit_betankung", "tagesverbrauch",
+  "jahresverbrauch",
   "reichweite", "leer_am", "reserve_am", "bestellen_bis", "letzte_betankung",
 ];
 
@@ -625,6 +626,10 @@ class LpgTankCard extends HTMLElement {
         teile.push(this._fmt(eintrag.preis_pro_liter, 3, "€/L"));
       }
       if (eintrag.kosten != null) teile.push(this._fmt(eintrag.kosten, 0, "€"));
+      if (eintrag.faktor_neu) {
+        teile.push(`kalibriert ${this._fmt(eintrag.faktor_alt, 3)} → ` +
+          `${this._fmt(eintrag.faktor_neu, 3, "L/m³")}`);
+      }
       if (eintrag.nachgetragen) teile.push("nachgetragen");
       const datum = this._parse(String(eintrag.datum || ""));
       return `<div class="zeile">
@@ -834,6 +839,15 @@ class LpgTankCard extends HTMLElement {
     }
     const preis = zahl(this._zustand("gaspreis"), null);
     if (preis !== null) teile.push(`Gaspreis: ${this._fmt(preis, 3, "EUR/L")}`);
+
+    // Der Umrechnungsfaktor nur dort, wo er etwas bedeutet: Bei kWh- oder
+    // Liter-Zählern wird gar nicht über m³ gerechnet.
+    const faktor = this._zustand("umrechnungsfaktor");
+    const fa = (faktor && faktor.attributes) || {};
+    if (istWert(faktor) && fa.kalibrierbar) {
+      teile.push(`Umrechnung: ${this._fmt(zahl(faktor), 3, "L/m³")}` +
+        (fa.kalibrierungen ? " (kalibriert)" : ""));
+    }
     e.fuss.textContent = teile.join(" · ");
 
     this._preisverlaufZeichnen(letzte);

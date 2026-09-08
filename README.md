@@ -78,7 +78,7 @@ darunter die Preisentwicklung, sobald zwei Lieferungen mit Preis eingetragen sin
 
 ## Entitäten
 
-Je Tank entsteht ein Gerät mit 14 Sensoren:
+Je Tank entsteht ein Gerät mit 15 Sensoren:
 
 | Sensor | Bedeutung |
 |---|---|
@@ -87,6 +87,7 @@ Je Tank entsteht ein Gerät mit 14 Sensoren:
 | Füllung | % der nutzbaren Menge, 100 % = randvoll getankt |
 | Restenergie / Restwert | kWh und EUR |
 | Gaspreis | EUR/L, mit Langzeitstatistik – daraus wird der Preisverlauf |
+| Umrechnungsfaktor | L/m³, der gerade gültige Wert – siehe unten |
 | Verbrauch seit Betankung | Liter seit dem letzten Bezugspunkt |
 | Tagesverbrauch | Ø Liter pro Tag |
 | Jahresverbrauch | erwarteter Jahresverbrauch, Attribut `monatsprofil` |
@@ -96,6 +97,27 @@ Je Tank entsteht ein Gerät mit 14 Sensoren:
 
 Dazu kommt die Zahl **Gaspreis** (EUR/L) zum Eintragen – außer du hast in der
 Konfiguration einen eigenen Preis-Helfer angegeben, dann bleibt deiner die Quelle.
+
+### Umrechnungsfaktor
+
+Der Wert, mit dem aus den m³ deiner Heizung Liter Flüssiggas werden. Er steht
+in der Konfiguration, kalibriert sich aber bei jeder Betankung mit
+Tankuhr-Angabe selbst nach – deshalb gibt es ihn auch als Sensor: Als Messwert
+zeichnet Home Assistant ihn auf, und der Sprung nach einer Nachkalibrierung
+wird im Verlauf sichtbar.
+
+| Attribut | Bedeutung |
+|---|---|
+| `quelle` | `Kalibrierung`, wenn der Wert gemessen ist, sonst `Konfiguration` |
+| `kalibriert_am` / `vorher` | wann zuletzt, und von welchem Wert aus |
+| `kalibrierungen` | wie oft bisher |
+| `kalibrierbar` | ob deine Zähler in m³ zählen – nur dann geht es überhaupt |
+| `abweichung_von_der_norm_prozent` | Abstand zu den 3,92 L/m³ nach DIN |
+| `kwh_pro_liter` | die zweite Umrechnung, für die Energieanzeige |
+
+In der Karte steht er unten in der Fußzeile, sobald deine Zähler in m³ zählen,
+und die Zeile im Reiter *Korrigieren* zeigt bei einer Betankung, die ihn
+verstellt hat, den Sprung: `kalibriert 3,920 → 3,870 L/m³`.
 
 ## Dienste
 
