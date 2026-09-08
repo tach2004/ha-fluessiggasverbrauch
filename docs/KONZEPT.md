@@ -373,6 +373,18 @@ Mindestmenge von 20 m³ verhindern, dass ein Tippfehler die Anlage verstellt.
 Nach der ersten Betankung stimmt die Rechnung für deine Anlage statt für die
 Norm.
 
+Damit das nicht im Verborgenen passiert, gibt es den Faktor als eigenen Sensor
+– als Messwert, damit Home Assistant ihn aufzeichnet. Verstellt eine Betankung
+ihn, siehst du den Sprung im Verlauf, und die Attribute sagen, wann und von
+welchem Wert aus. Ein eigener Speicher war dafür nicht nötig: Jede Betankung
+hält alten und neuen Faktor ohnehin in ihrem Historieneintrag fest, die jüngste
+mit Eintrag ist die Antwort.
+
+Er ist bewusst kein `number` zum Verstellen. Der Faktor gehört zur Konfiguration
+des Tanks, und zwei Wege, ihn zu ändern – Optionen und Entität – liefen
+auseinander, sobald die nächste Betankung kalibriert. Ändern also weiterhin
+unter *Konfigurieren*.
+
 ## Die Zahlen hinter den Vorgaben
 
 | Größe | Wert | Herkunft |

@@ -147,6 +147,11 @@ function hassMit(tankId, liter, tageBisLeer) {
         statistik_quelle: "sensor.gaspreis_eur_m3",
         preisverlauf: preisStatistik(),
       }),
+      e("umrechnungsfaktor", 3.87, {
+        quelle: "Kalibrierung", kalibrierbar: true, kalibrierungen: 1,
+        kwh_pro_liter: 7.0, kalibriert_am: "2025-08-14", vorher: 3.92,
+        abweichung_von_der_norm_prozent: -1.3,
+      }),
       e("jahresverbrauch", 1400),
       e("reserve_am", inTagen(Math.round(tageBisLeer * 0.72))),
       e("letzte_betankung", "2025-08-14", {
@@ -158,7 +163,8 @@ function hassMit(tankId, liter, tageBisLeer) {
           { id: "a2", datum: "2022-11-18", liter: 2600, preis_pro_liter: 0.918, kosten: 2386.8 },
           { id: "a3", datum: "2023-10-05", liter: 2750, preis_pro_liter: 0.741, kosten: 2037.75 },
           { id: "a4", datum: "2024-09-27", liter: 2500, preis_pro_liter: 0.638, kosten: 1595 },
-          { id: "a5", datum: "2025-08-14", liter: 2450, preis_pro_liter: 0.677, kosten: 1658.65 },
+          { id: "a5", datum: "2025-08-14", liter: 2450, preis_pro_liter: 0.677, kosten: 1658.65,
+            faktor_alt: 3.92, faktor_neu: 3.87 },
         ],
       }),
     ]),

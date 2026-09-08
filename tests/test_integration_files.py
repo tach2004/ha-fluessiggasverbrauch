@@ -203,6 +203,22 @@ def test_karte_bietet_das_korrigieren_an():
     assert "eintrag: eintrag.id" in karte
 
 
+def test_umrechnungsfaktor_ist_sichtbar():
+    """Der Faktor kalibriert sich selbst – dann muss man ihn auch sehen können."""
+    sensor = _quelltext("sensor.py")
+    assert 'translation_key="umrechnungsfaktor"' in sensor
+    # als Messwert, sonst zeichnet Home Assistant den Sprung nicht auf
+    block = sensor[sensor.index('key="umrechnungsfaktor"'):]
+    block = block[: block.index("TankSensorDescription(", 10)]
+    assert "SensorStateClass.MEASUREMENT" in block
+    assert 'native_unit_of_measurement="L/m³"' in block
+
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    assert '_zustand("umrechnungsfaktor")' in karte
+    # In der Lieferhistorie steht der Sprung, den eine Betankung ausgelöst hat
+    assert "eintrag.faktor_neu" in karte
+
+
 def test_karte_wird_mit_ausgeliefert():
     karte = INTEGRATION / "frontend" / "lpg-tank-card.js"
     assert karte.is_file(), "Die Karte muss im Integrationsordner liegen (HACS kopiert nur diesen)"

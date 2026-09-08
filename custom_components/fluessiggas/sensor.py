@@ -20,7 +20,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import DEFAULT_LITER_PER_M3, DOMAIN
 from .coordinator import TankCoordinator, TankState
 
 MONATSNAMEN = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
@@ -110,6 +110,15 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         },
     ),
     TankSensorDescription(
+        key="umrechnungsfaktor",
+        translation_key="umrechnungsfaktor",
+        native_unit_of_measurement="L/m³",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+        value_fn=lambda s, c: round(c.liter_per_m3, 3),
+        attrs_fn=lambda s, c: _faktor_attribute(c),
+    ),
+    TankSensorDescription(
         key="verbrauch_seit_betankung",
         translation_key="verbrauch_seit_betankung",
         native_unit_of_measurement=UnitOfVolume.LITERS,
@@ -186,6 +195,29 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         },
     ),
 )
+
+
+def _faktor_attribute(c: TankCoordinator) -> dict[str, Any]:
+    """Woher der gerade gültige Umrechnungsfaktor kommt.
+
+    Der Zustand ist die Zahl selbst – als Messwert, damit Home Assistant sie
+    aufzeichnet und der Sprung bei einer Nachkalibrierung im Verlauf sichtbar
+    wird. Die Attribute sagen, ob er von Hand steht oder gemessen wurde.
+    """
+    kalibrierung = c.calibration
+    attribute: dict[str, Any] = {
+        "quelle": "Kalibrierung" if kalibrierung else "Konfiguration",
+        "kalibrierbar": c.all_sources_are_volume,
+        "kalibrierungen": c.calibrations,
+        "kwh_pro_liter": round(c.kwh_per_liter, 2),
+        "abweichung_von_der_norm_prozent": round(
+            (c.liter_per_m3 / DEFAULT_LITER_PER_M3 - 1) * 100, 1
+        ),
+    }
+    if kalibrierung:
+        attribute["kalibriert_am"] = kalibrierung["datum"]
+        attribute["vorher"] = kalibrierung["vorher"]
+    return attribute
 
 
 def _profil_attribute(s: TankState, c: TankCoordinator) -> dict[str, Any]:

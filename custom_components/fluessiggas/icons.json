@@ -25,6 +25,9 @@
       "gaspreis": {
         "default": "mdi:currency-eur"
       },
+      "umrechnungsfaktor": {
+        "default": "mdi:swap-horizontal"
+      },
       "verbrauch_seit_betankung": {
         "default": "mdi:meter-gas"
       },

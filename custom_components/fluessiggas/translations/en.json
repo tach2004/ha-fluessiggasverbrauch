@@ -150,6 +150,9 @@
       },
       "gaspreis": {
         "name": "Gas price"
+      },
+      "umrechnungsfaktor": {
+        "name": "Conversion factor"
       }
     },
     "number": {
