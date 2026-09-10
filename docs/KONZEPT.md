@@ -451,7 +451,7 @@ der wirklich zählt.
 
 Technisch machbar, aber nicht als Dauerabfrage empfehlenswert.
 
-Portale wie 123-fluessiggas.de haben keine offene Schnittstelle. Man müsste das
+Portale haben keine offene Schnittstelle. Man müsste das
 Angebotsformular nachbauen: Postleitzahl, Bestellmenge, Füllstand und
 Tankeigentum als Formularfelder abschicken und den Preis aus der Antwortseite
 herauslesen. Das funktioniert – bis zum nächsten Umbau der Seite, und dann
