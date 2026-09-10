@@ -152,7 +152,19 @@ function hassMit(tankId, liter, tageBisLeer) {
         kwh_pro_liter: 7.0, kalibriert_am: "2025-08-14", vorher: 3.92,
         abweichung_von_der_norm_prozent: -1.3,
       }),
-      e("jahresverbrauch", 1400),
+      e("jahresverbrauch", 1400, { kubikmeter: 362 }),
+      e("jahr_liter", 1245, {
+        jahr: 2026, seit: "2026-01-01T00:00:00+01:00", erwartet_bis_heute: 1180,
+        quellen: [
+          { entity_id: "sensor.heizgas_dieses_jahr", statistik_einheit: "m³",
+            gelesen_als: "m3", state_class: "total_increasing", liter_je_einheit: 3.87 },
+          { entity_id: "sensor.warmwassergas_dieses_jahr", statistik_einheit: "m³",
+            gelesen_als: "m3", state_class: "total_increasing", liter_je_einheit: 3.87 },
+        ],
+      }),
+      e("jahr_kubik", 321.7),
+      e("verbrauch_seit_betankung", 27, { tage: 27, gezaehlte_einheiten: 7.0 }),
+      e("jahr_energie", 8715),
       e("reserve_am", inTagen(Math.round(tageBisLeer * 0.72))),
       e("letzte_betankung", "2025-08-14", {
         liter: 2450, kosten: 1659, preis_pro_liter: 0.677,

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -74,7 +74,7 @@ from .const import (
     UNIT_LITER,
     UNIT_M3,
 )
-from .forecast import Forecast, Profile, build_profile, simulate
+from .forecast import Forecast, Profile, build_profile, expected_to_date, simulate
 from .history import KeinTreffer, ohne, waehle_eintraege
 from .units import normalisiere, price_factor
 
@@ -96,6 +96,11 @@ UNIT_INTERVAL = timedelta(hours=12)
 #: hat. Solange nach der letzten Bewegung noch nicht abgefragt wurde, wird
 #: weiter abgefragt - danach ist eine Abfrage nachweislich überflüssig.
 STAT_LAG = timedelta(minutes=15)
+
+#: Der Bezugspunkt zum Jahresanfang wird einmal im Jahr gelesen. Schlägt das
+#: fehl (noch keine Statistik so weit zurück), wird es stündlich erneut
+#: versucht statt bei jedem Durchlauf.
+YEAR_RETRY = timedelta(hours=1)
 
 #: Sicherheitsnetz: Auch ohne jede Zählerbewegung wird einmal pro Stunde
 #: gelesen. Fängt Fälle ab, in denen Statistik ohne Zustandsänderung entsteht
@@ -136,6 +141,12 @@ class TankState:
     forecast: Forecast = field(default_factory=Forecast)
     last_delivery: dict[str, Any] | None = None
     missing_sources: list[str] = field(default_factory=list)
+    #: Verbrauch im laufenden Kalenderjahr; None, solange der Bezugspunkt
+    #: zum Jahresanfang nicht bestimmt werden konnte
+    year_liters: float | None = None
+    year_start: datetime | None = None
+    #: Was das Monatsprofil bis heute erwartet hätte – der Vergleichswert
+    year_expected: float | None = None
 
 
 class TankCoordinator(DataUpdateCoordinator[TankState]):
@@ -165,6 +176,9 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         self._missing: list[str] = []
         self._sources_changed_at: datetime | None = None
         self._gespart = 0
+        self._year_sums: dict[str, float] = {}
+        self._year_for: int | None = None
+        self._year_try: datetime | None = None
         self._profile: Profile | None = None
         self._profile_read: datetime | None = None
         self._profile_task = None
@@ -543,6 +557,106 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
                 summen[entity_id] = wert
         return summen
 
+    # --------------------------------------------------------- Kalenderjahr
+
+    @staticmethod
+    def year_start(moment: date | None = None) -> datetime:
+        """Beginn des Kalenderjahres in Ortszeit, als UTC-Zeitpunkt."""
+        tag = moment or dt_util.now().date()
+        return dt_util.as_utc(dt_util.start_of_local_day(date(tag.year, 1, 1)))
+
+    async def _async_year_start_sums(self) -> dict[str, float] | None:
+        """Statistiksummen zum Jahresanfang – Bezugspunkt für das laufende Jahr.
+
+        Kostet eine Abfrage im Jahr: Der Wert steht fest, sobald das Jahr
+        begonnen hat. Der Verbrauch des Jahres ist dann schlicht die Differenz
+        zur lebenden Summe – und weil die Statistiksumme nie sinkt, kann der
+        Wert auch nicht zurückspringen. Genau das ist der Grund, ihn so und
+        nicht aus Monatswerten zusammenzusetzen.
+        """
+        jahr = dt_util.now().year
+        if self._year_for == jahr:
+            return self._year_sums
+
+        jetzt = dt_util.utcnow()
+        # In den ersten Stunden eines Jahres ist die Stundenstatistik zum
+        # Jahreswechsel noch nicht geschrieben. Dann lieber kurz "unbekannt"
+        # als ein Bezugspunkt, der um zwei Stunden Gas daneben liegt - der
+        # gälte das ganze Jahr.
+        if jetzt < self.year_start() + timedelta(hours=2):
+            return None
+        if self._year_try and (jetzt - self._year_try) < YEAR_RETRY:
+            return None
+        self._year_try = jetzt
+
+        # Eine Sekunde vor Mitternacht: async_sums_at nimmt die letzte Zeile,
+        # die bei oder vor dem Zeitpunkt beginnt - so ist es der Stand zum
+        # Jahreswechsel und nicht der eine Stunde danach.
+        summen = await self.async_sums_at(self.year_start() - timedelta(seconds=1))
+        fehlend = [eid for eid in self.sources if eid not in summen]
+        if fehlend:
+            _LOGGER.debug(
+                "Kein Statistikstand zum Jahresanfang für %s; der "
+                "Jahresverbrauch bleibt vorerst unbekannt", fehlend,
+            )
+            return None
+
+        self._year_sums = summen
+        self._year_for = jahr
+        _LOGGER.debug("Bezugspunkt für %s gesetzt: %s", jahr, summen)
+        return summen
+
+    def _year_liters(
+        self, summen: dict[str, float], jahresanfang: dict[str, float] | None
+    ) -> float | None:
+        """Verbrauch im laufenden Kalenderjahr in Litern."""
+        if jahresanfang is None:
+            return None
+        liter = 0.0
+        for entity_id, wert in summen.items():
+            if (anfang := jahresanfang.get(entity_id)) is None:
+                return None
+            if wert < float(anfang):
+                # Die Statistik wurde gelöscht oder neu aufgebaut: Der
+                # gemerkte Bezugspunkt stammt aus der alten Reihe und ist
+                # damit wertlos. Neu holen (der Stundentakt von YEAR_RETRY
+                # bleibt, damit das nicht zur Endlosschleife wird).
+                _LOGGER.warning(
+                    "Statistiksumme von %s liegt unter dem Stand zum "
+                    "Jahresanfang (%.1f < %.1f); Bezugspunkt wird neu gelesen",
+                    entity_id, wert, float(anfang),
+                )
+                self._year_for = None
+                return None
+            liter += (wert - float(anfang)) * self._liter_factor(entity_id)
+        return liter
+
+    @property
+    def source_details(self) -> list[dict[str, Any]]:
+        """Je Quelle: Einheit, Umrechnung und state_class – zum Nachsehen.
+
+        Die Jahreszähler einer Heizung fallen zum Jahreswechsel auf 0 zurück.
+        Dass die Rechnung darüber hinweg stimmt, hängt daran, dass Home
+        Assistant den Rücksprung als Zählerreset erkennt und aus der
+        Statistiksumme heraushält – und das tut es nur bei state_class
+        'total_increasing' oder 'total'. Hier steht, was tatsächlich anliegt.
+        """
+        details: list[dict[str, Any]] = []
+        for entity_id in self.sources:
+            zustand = self.hass.states.get(entity_id)
+            attribute = zustand.attributes if zustand else {}
+            details.append(
+                {
+                    "entity_id": entity_id,
+                    "statistik_einheit": self._units.get(entity_id) or None,
+                    "anzeige_einheit": attribute.get("unit_of_measurement"),
+                    "gelesen_als": self._unit_of(entity_id),
+                    "state_class": attribute.get("state_class"),
+                    "liter_je_einheit": round(self._liter_factor(entity_id), 4),
+                }
+            )
+        return details
+
     @staticmethod
     def _first_sum(zeilen: Any) -> float | None:
         if not zeilen:
@@ -797,6 +911,8 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         referenz = float(self._data.get(STORE_LEVEL, 0.0))
         stand = min(max(referenz - verbrauch_liter, 0.0), self.usable_capacity)
 
+        jahr_liter = self._year_liters(summen, await self._async_year_start_sums())
+
         # Das Monatsprofil ist die teure Abfrage: mehrere Jahre Statistik über
         # alle Quellen. Sie läuft deshalb nie im Aktualisierungspfad, sondern
         # nebenher – sonst hängt die Einrichtung der Integration daran, und mit
@@ -836,6 +952,13 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             ),
             last_delivery=self.deliveries[-1] if self.deliveries else None,
             missing_sources=fehlend,
+            year_liters=round(jahr_liter, 1) if jahr_liter is not None else None,
+            year_start=self.year_start(),
+            year_expected=(
+                round(expected_to_date(self._profile, dt_util.now().date())
+                      * self.correction, 1)
+                if self._profile and self._profile.measured_months else None
+            ),
         )
 
     def _profil_anfordern(self) -> None:

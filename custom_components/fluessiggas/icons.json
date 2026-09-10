@@ -34,6 +34,15 @@
       "tagesverbrauch": {
         "default": "mdi:chart-line"
       },
+      "jahr_liter": {
+        "default": "mdi:calendar-month"
+      },
+      "jahr_kubik": {
+        "default": "mdi:cube-outline"
+      },
+      "jahr_energie": {
+        "default": "mdi:lightning-bolt-outline"
+      },
       "jahresverbrauch": {
         "default": "mdi:calendar-range"
       },
