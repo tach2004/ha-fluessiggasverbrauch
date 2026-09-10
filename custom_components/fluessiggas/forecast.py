@@ -45,6 +45,23 @@ class Forecast:
     months: list[dict] = field(default_factory=list)
 
 
+def expected_to_date(profile: Profile, today: date) -> float:
+    """Erwarteter Verbrauch vom 1. Januar bis heute nach dem Monatsprofil.
+
+    Der Vergleichswert zum tatsächlichen Jahresverbrauch. Ohne ihn ist die
+    Zahl schwer zu deuten, denn der verheizte Anteil des Jahres läuft dem
+    Kalender erst voraus und dann nachher: Anfang Mai sind knapp 49 % des
+    Jahresverbrauchs weg, obwohl erst ein Drittel des Jahres vorbei ist;
+    Anfang November erst 70 % bei 83 % Kalenderjahr. Der laufende Monat wird
+    anteilig nach Tagen gerechnet, der heutige Tag noch nicht mitgezählt,
+    weil er nicht vorbei ist.
+    """
+    liter = sum(profile.liters[: today.month - 1])
+    tage_im_monat = calendar.monthrange(today.year, today.month)[1]
+    liter += profile.liters[today.month - 1] * (today.day - 1) / tage_im_monat
+    return liter
+
+
 def build_profile(
     monthly: dict[tuple[int, int], float],
     years: int,

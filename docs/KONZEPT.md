@@ -133,6 +133,7 @@ Recorder-Datenbank, ändert kein Schema, räumt nichts auf. Ihr eigener Zustand
 | `statistics_during_period`, Monatsprofil | 1× täglich, im Hintergrund | N Jahre je Quelle |
 | `statistics_during_period`, Preisverlauf | 1× täglich, im Hintergrund | bis 6 Jahre, ein Sensor |
 | `async_list_statistic_ids`, Einheiten | alle 12 h, dazu 1× täglich für den Preis-Sensor | Metadatentabelle, wenige Zeilen |
+| `statistics_during_period`, Bezugspunkt Jahresanfang | 1× im Jahr | 36-Stunden-Fenster, Stundenwerte |
 | `statistics_during_period`, Stundenwerte | nur als Notnagel | siehe unten |
 
 ### Die kleine Abfrage: alle 15 Minuten, oft gar nicht
@@ -202,6 +203,11 @@ Zweimal wird zusätzlich gelesen, beides selten:
   diesem Tag. Das ist ein Fenster von 36 Stunden, und es passiert nur, wenn du
   eine Betankung einträgst.
 
+Derselbe Weg holt einmal im Jahr den Bezugspunkt für den Jahresverbrauch
+(1. Januar 00:00 Uhr). Schlägt das fehl, weil noch keine Statistik so weit
+zurückreicht, bleibt der Jahresverbrauch unbekannt und es wird stündlich erneut
+versucht – nicht bei jedem Durchlauf.
+
 ### Und die SQL-Fehler?
 
 Falls du je Datenbankfehler im Protokoll siehst: Von hier kommen sie nicht.
@@ -209,6 +215,102 @@ Lesende Zugriffe über die Recorder-Schnittstelle können eine Datenbank weder
 beschädigen noch sperren – sie laufen im Executor des Recorders, also auf
 demselben Thread, der ohnehin schreibt. Ein Test dauert eine Minute: Ordner
 `custom_components/fluessiggas` umbenennen, Home Assistant neu starten.
+
+## Jahreszähler, die auf 0 zurückfallen
+
+Die Zähler einer Viessmann Vitodens heißen „Gasverbrauch Heizung dieses Jahr"
+und „… Warmwasser dieses Jahr". Sie zählen ein Kalenderjahr hoch und springen
+zum Jahreswechsel auf 0. Genau deshalb liest diese Integration **nicht den
+Zustand** dieser Sensoren, sondern ihre Statistiksumme.
+
+Der Unterschied ist der ganze Punkt:
+
+| | 31.12. 23:00 | 01.01. 01:00 |
+|---|---|---|
+| Zustand des Sensors | 362 m³ | 0 m³ |
+| Statistiksumme (`sum`) | 1.184 m³ | 1.184 m³ |
+
+Home Assistant erkennt den Rücksprung als Zählerreset und hält ihn aus der
+Summe heraus – die läuft durch, über Jahre. Ein Verbrauch ist damit immer die
+Differenz zweier Summen, und die kann nicht negativ werden. Das ist der Grund,
+warum es hier kein `utility_meter` und keine Sonderbehandlung zum Silvester
+braucht: Der Jahreswechsel ist für diese Rechnung ein Tag wie jeder andere.
+
+### Woran es hängt – und wie du es prüfst
+
+An genau einer Sache: Die Quellsensoren müssen `state_class: total_increasing`
+(oder `total`) tragen. Nur dann führt Home Assistant überhaupt eine
+Statistiksumme und erkennt den Reset. Bei `measurement` gibt es keine Summe,
+und die Integration meldet das im Protokoll.
+
+Nachsehen kannst du es im Attribut `quellen` des Sensors *Verbrauch dieses
+Jahr*. Dort steht je Zähler, was tatsächlich anliegt:
+
+```yaml
+quellen:
+  - entity_id: sensor.heizgas_dieses_jahr
+    statistik_einheit: m³
+    gelesen_als: m3
+    state_class: total_increasing     # ← darauf kommt es an
+    liter_je_einheit: 3.87
+```
+
+### Der Verbrauch des laufenden Jahres
+
+Er ergibt sich als Differenz zur Statistiksumme am 1. Januar 00:00 Uhr
+Ortszeit. Dieser Bezugspunkt wird **einmal im Jahr** gelesen und dann gemerkt;
+der Rest ist eine Subtraktion von der Summe, die für den Füllstand ohnehin
+alle 15 Minuten kommt.
+
+Der naheliegende Alternativweg wäre, die Monatswerte des laufenden Jahres zu
+addieren – das Monatsprofil liest sie ohnehin täglich. Er ist aber schlechter,
+und zwar genau am Monatsersten: Der letzte Monat käme dann aus einem Profillauf
+vom Vortag und wäre um einen Tag zu klein, während der laufende Monat noch bei
+0 steht. Der Wert würde also kurz **sinken** – und ein Rückgang ist für einen
+Zähler das Signal für einen Reset. Die Langzeitstatistik hätte den
+Jahresverbrauch doppelt gezählt. Über die Differenz zur Summe kann das nicht
+passieren, weil die Summe selbst nie sinkt.
+
+### Warum `total` mit `last_reset` und nicht `total_increasing`
+
+Die drei Jahressensoren melden den 1. Januar ausdrücklich als `last_reset`.
+Home Assistant muss den Jahreswechsel damit nicht aus einem Rückgang erraten.
+
+Das ist keine Feinheit: Der Liter-Wert hängt am Faktor L/m³, und der
+kalibriert sich bei einer Betankung nach. Sinkt er dabei von 3,92 auf 3,87,
+sinkt auch der Jahresverbrauch in Litern um gut ein Prozent. Bei
+`total_increasing` wäre jeder Rückgang ein Reset-Kandidat; mit einem
+ausdrücklichen `last_reset` ist es schlicht ein neuer Messwert im selben Jahr.
+
+(Der m³-Wert ist davon übrigens gar nicht betroffen: Bei m³-Zählern kürzt sich
+der Faktor wieder heraus – Liter durch Faktor ergibt genau die gezählten
+Kubikmeter.)
+
+## Was in der Langzeitstatistik landet
+
+Nicht alles, und das mit Absicht. Home Assistant führt eine Langzeitstatistik
+nur für Entitäten mit `state_class`:
+
+| Sensor | `state_class` | Statistik |
+|---|---|---|
+| Füllstand, Tankuhr, Füllung | `measurement` | min/Ø/max je Stunde |
+| Restenergie, Restwert | `measurement` | min/Ø/max |
+| Gaspreis, Umrechnungsfaktor | `measurement` | min/Ø/max |
+| Tagesverbrauch | `measurement` | min/Ø/max |
+| Erwarteter Jahresverbrauch, Reichweite | `measurement` | min/Ø/max |
+| Verbrauch seit Betankung | `total_increasing` | Summe |
+| Verbrauch dieses Jahr (L, m³, kWh) | `total` + `last_reset` | Summe je Jahr |
+| Leer am, Reserve erreicht am, Bestellen bis | – | keine |
+| Letzte Betankung | – | keine |
+
+Die vier Datums-Sensoren sind Zeitstempel; für die gibt es in Home Assistant
+keine Statistik, und eine gemittelte Bestellfrist wäre auch keine sinnvolle
+Größe. Was von ihnen bleibt, ist die normale Zustandshistorie der letzten
+Tage.
+
+`Reichweite` und `Erwarteter Jahresverbrauch` haben ihre `state_class` erst
+seit Version 2.0.0 – damit sich nachvollziehen lässt, wie sich die Prognose
+über die Monate verschoben hat.
 
 ## Mehr Mittelungsjahre einstellen, als Daten vorhanden sind
 

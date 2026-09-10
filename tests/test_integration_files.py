@@ -219,6 +219,65 @@ def test_umrechnungsfaktor_ist_sichtbar():
     assert "eintrag.faktor_neu" in karte
 
 
+def test_jahreswerte_sind_zaehler_mit_bekanntem_nullpunkt():
+    """Die Jahreswerte fallen zum Jahreswechsel auf 0 – das muss ausdrücklich
+    hinterlegt sein.
+
+    Mit state_class TOTAL und einem last_reset muss Home Assistant den
+    Rücksprung nicht aus einem Rückgang erraten. Bei TOTAL_INCREASING würde
+    ein kleiner Rückgang mitten im Jahr – etwa nach einer Nachkalibrierung des
+    Faktors – womöglich als Jahreswechsel gelesen und die Langzeitstatistik
+    verdoppelte den Jahresverbrauch.
+    """
+    sensor = _quelltext("sensor.py")
+    for schluessel in ("jahr_liter", "jahr_kubik", "jahr_energie"):
+        anfang = sensor.index(f'key="{schluessel}"')
+        block = sensor[anfang:]
+        block = block[: block.index("TankSensorDescription(", 10)]
+        assert "SensorStateClass.TOTAL," in block, schluessel
+        assert "last_reset_fn=lambda s, c: s.year_start" in block, schluessel
+        assert "device_class=" in block, schluessel
+
+    # Die Entität muss last_reset auch tatsächlich melden
+    assert "def last_reset" in sensor
+    assert "last_reset_fn" in sensor
+
+    # Drei Einheiten, jede einzeln – sonst gibt es keine drei Statistiken
+    einheiten = {"UnitOfVolume.LITERS", "UnitOfVolume.CUBIC_METERS",
+                 "UnitOfEnergy.KILO_WATT_HOUR"}
+    assert einheiten <= set(re.findall(r"native_unit_of_measurement=(\S+?),", sensor))
+
+
+def test_jahresbezugspunkt_kostet_eine_abfrage_im_jahr():
+    """Der Verbrauch des Jahres darf nicht aus Monatswerten zusammengesetzt
+    werden.
+
+    Aus der Differenz zur Statistiksumme am Jahresanfang kann er nicht
+    zurückspringen, weil die Summe selbst nie sinkt. Zusammengesetzt aus einem
+    täglich gelesenen Monatsprofil plus laufendem Monat wäre er am
+    Monatsersten kurz kleiner – und ein Rückgang ist für einen Zähler das
+    Signal für einen Reset.
+    """
+    koordinator = _quelltext("coordinator.py")
+    pfad = koordinator[koordinator.index("async def _async_year_start_sums"):]
+    pfad = pfad[: pfad.index("    def _year_liters")]
+    assert "if self._year_for == jahr:" in pfad      # einmal im Jahr, dann gemerkt
+    assert "YEAR_RETRY" in pfad                      # Fehlversuch nicht in Endlosschleife
+    assert "async_sums_at" in pfad                   # vorhandener, getesteter Weg
+
+
+def test_karte_zeigt_die_jahreswerte_statt_der_reichweite():
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    for kennung in ("jahr_liter", "jahr_kubik", "jahr_energie"):
+        assert f'kennung: "{kennung}"' in karte, kennung
+    # Die Kachel ist weg, der Sensor bleibt: aus seinem Attribut "monate"
+    # zeichnet die Karte den Restverlauf.
+    assert 'label: "Reichweite"' not in karte
+    assert '_zustand("reichweite")' in karte
+    # Erwarteter Jahresverbrauch zusätzlich in m³
+    assert "kubikmeter" in karte
+
+
 def test_karte_wird_mit_ausgeliefert():
     karte = INTEGRATION / "frontend" / "lpg-tank-card.js"
     assert karte.is_file(), "Die Karte muss im Integrationsordner liegen (HACS kopiert nur diesen)"

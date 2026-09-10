@@ -59,6 +59,7 @@ type: custom:lpg-tank-card
 tank: Gartenhaus       # nur nötig, wenn mehrere Tanks eingerichtet sind
 verlauf: true          # Restverlauf der kommenden Monate
 preisverlauf: true     # Preisentwicklung der eingetragenen Lieferungen
+jahr: true             # Verbrauch des laufenden Jahres in L, m³ und kWh
 betankung: true        # Betankungsformular
 wellen: true           # Wellenanimation
 ```
@@ -73,12 +74,26 @@ darüber – Maus oder Finger – blendet ein Fadenkreuz mit Datum, Preis und
 Liefermenge ein, wie in den Verlaufsdiagrammen von Home Assistant.
 
 Die Karte zeigt sechs Kennzahlen unter dem Tank – Restenergie, Ø Verbrauch,
-Reichweite, **Reserve erreicht**, voraussichtlich leer und Bestellfrist – sowie
-darunter die Preisentwicklung, sobald zwei Lieferungen mit Preis eingetragen sind.
+Verbrauch seit der Betankung, **Reserve erreicht**, voraussichtlich leer und
+Bestellfrist. Beim Ø Verbrauch steht der erwartete Jahresverbrauch in Litern
+*und* Kubikmetern.
+
+Darunter der **Verbrauch des laufenden Kalenderjahres** in Litern, m³ und kWh –
+drei anklickbare Felder, hinter jedem steckt eine eigene Entität mit
+Langzeitstatistik. Daneben, was das Monatsprofil bis heute erwartet hätte:
+`erwartet bis heute 1.180 L (+6 %)`. Bewusst keine Prozentangabe „vom Jahr" –
+der verheizte Anteil läuft dem Kalender erst voraus und dann nachher (Anfang
+Mai knapp 49 % bei einem Drittel Kalenderjahr, Anfang November 70 % bei 83 %).
+
+Zuletzt die Preisentwicklung, sobald zwei Lieferungen mit Preis eingetragen sind.
+
+Eine Kachel *Reichweite* gab es bis Version 1.6 auch. Die Tage stehen aber schon
+unter „Reserve erreicht" und „Voraussichtlich leer" – der Sensor bleibt, nur die
+Kachel ist weg.
 
 ## Entitäten
 
-Je Tank entsteht ein Gerät mit 15 Sensoren:
+Je Tank entsteht ein Gerät mit 18 Sensoren:
 
 | Sensor | Bedeutung |
 |---|---|
@@ -90,13 +105,39 @@ Je Tank entsteht ein Gerät mit 15 Sensoren:
 | Umrechnungsfaktor | L/m³, der gerade gültige Wert – siehe unten |
 | Verbrauch seit Betankung | Liter seit dem letzten Bezugspunkt |
 | Tagesverbrauch | Ø Liter pro Tag |
-| Jahresverbrauch | erwarteter Jahresverbrauch, Attribut `monatsprofil` |
+| Verbrauch dieses Jahr | Liter im laufenden Kalenderjahr – siehe unten |
+| Verbrauch dieses Jahr (m³) | dasselbe in Kubikmetern |
+| Verbrauch dieses Jahr (kWh) | dasselbe in Kilowattstunden |
+| Erwarteter Jahresverbrauch | aus dem Monatsprofil, Attribut `monatsprofil` |
 | Reichweite | Tage bis leer, Attribut `monate` mit dem Verlauf |
 | Leer am / Reserve erreicht am / Bestellen bis | konkrete Daten |
 | Letzte Betankung | Datum, Attribut `lieferungen` mit der Historie |
 
 Dazu kommt die Zahl **Gaspreis** (EUR/L) zum Eintragen – außer du hast in der
 Konfiguration einen eigenen Preis-Helfer angegeben, dann bleibt deiner die Quelle.
+
+### Verbrauch dieses Jahr
+
+Drei Entitäten für dieselbe Menge, weil Home Assistant für jede eine eigene
+Langzeitstatistik führt – so lässt sich jede einzeln anklicken und über die
+Jahre hinweg ansehen.
+
+Gerechnet wird als Differenz der Statistiksumme zum Stand am 1. Januar 00:00
+Uhr. Das kostet **eine Datenbankabfrage im Jahr**: Der Bezugspunkt steht fest,
+sobald das Jahr begonnen hat, und der Rest ist eine Subtraktion von der Summe,
+die für den Füllstand ohnehin gelesen wird.
+
+Attribute am Liter-Sensor:
+
+| Attribut | Bedeutung |
+|---|---|
+| `jahr` / `seit` | welches Jahr, und ab wann gezählt wird |
+| `erwartet_bis_heute` | was das Monatsprofil bis heute erwartet hätte |
+| `quellen` | je Zähler: Einheit, `state_class` und der verwendete Liter-Faktor |
+
+Die drei Sensoren tragen `state_class: total` und melden den 1. Januar als
+`last_reset`. Home Assistant muss den Jahreswechsel damit nicht aus einem
+Rückgang erraten – siehe [KONZEPT](docs/KONZEPT.md#jahreszähler-die-auf-0-zurückfallen).
 
 ### Umrechnungsfaktor
 

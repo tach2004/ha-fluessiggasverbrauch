@@ -130,6 +130,15 @@
       "tagesverbrauch": {
         "name": "Daily consumption"
       },
+      "jahr_liter": {
+        "name": "Consumption this year"
+      },
+      "jahr_kubik": {
+        "name": "Consumption this year (m³)"
+      },
+      "jahr_energie": {
+        "name": "Consumption this year (kWh)"
+      },
       "jahresverbrauch": {
         "name": "Expected annual consumption"
       },

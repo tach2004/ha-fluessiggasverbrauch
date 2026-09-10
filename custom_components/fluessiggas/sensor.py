@@ -40,6 +40,8 @@ class TankSensorDescription(SensorEntityDescription):
 
     value_fn: Callable[[TankState, TankCoordinator], Any]
     attrs_fn: Callable[[TankState, TankCoordinator], dict[str, Any]] | None = None
+    #: Nur für state_class TOTAL: Wann der Zähler zuletzt bei 0 stand.
+    last_reset_fn: Callable[[TankState, TankCoordinator], datetime | None] | None = None
 
 
 SENSOREN: tuple[TankSensorDescription, ...] = (
@@ -139,10 +141,61 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         suggested_display_precision=1,
         value_fn=lambda s, c: s.per_day,
     ),
+    # Die drei Jahreswerte sind dieselbe Menge in drei Einheiten. Bewusst als
+    # eigene Entitäten und nicht als Attribute: Nur so führt Home Assistant
+    # für jede eine Langzeitstatistik, und nur so lässt sich jede einzeln
+    # anklicken und im Verlauf über die Jahre ansehen.
+    TankSensorDescription(
+        key="jahr_liter",
+        translation_key="jahr_liter",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        device_class=SensorDeviceClass.VOLUME,
+        state_class=SensorStateClass.TOTAL,
+        suggested_display_precision=0,
+        value_fn=lambda s, c: s.year_liters,
+        last_reset_fn=lambda s, c: s.year_start,
+        attrs_fn=lambda s, c: {
+            "jahr": s.year_start.year if s.year_start else None,
+            "seit": s.year_start.isoformat() if s.year_start else None,
+            # Ohne Vergleichswert ist die Zahl schwer zu deuten: Die Heizkurve
+            # ist nicht gleichmäßig über das Jahr verteilt.
+            "erwartet_bis_heute": s.year_expected,
+            # Damit nachprüfbar ist, dass der Jahresrücksprung der Heizungs-
+            # zähler sauber herausgerechnet wird - das hängt an state_class.
+            "quellen": c.source_details,
+        },
+    ),
+    TankSensorDescription(
+        key="jahr_kubik",
+        translation_key="jahr_kubik",
+        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+        device_class=SensorDeviceClass.VOLUME,
+        state_class=SensorStateClass.TOTAL,
+        suggested_display_precision=1,
+        value_fn=lambda s, c: (
+            round(s.year_liters / max(c.liter_per_m3, 0.1), 2)
+            if s.year_liters is not None else None
+        ),
+        last_reset_fn=lambda s, c: s.year_start,
+    ),
+    TankSensorDescription(
+        key="jahr_energie",
+        translation_key="jahr_energie",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        suggested_display_precision=0,
+        value_fn=lambda s, c: (
+            round(s.year_liters * c.kwh_per_liter, 1)
+            if s.year_liters is not None else None
+        ),
+        last_reset_fn=lambda s, c: s.year_start,
+    ),
     TankSensorDescription(
         key="jahresverbrauch",
         translation_key="jahresverbrauch",
         native_unit_of_measurement=UnitOfVolume.LITERS,
+        state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
         value_fn=lambda s, c: round(s.profile.annual * c.correction) if s.profile else None,
         attrs_fn=lambda s, c: _profil_attribute(s, c),
@@ -151,6 +204,7 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         key="reichweite",
         translation_key="reichweite",
         native_unit_of_measurement="d",
+        state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
         value_fn=lambda s, c: s.forecast.days_to_empty,
         attrs_fn=lambda s, c: {
@@ -233,6 +287,7 @@ def _profil_attribute(s: TankState, c: TankCoordinator) -> dict[str, Any]:
             MONATSNAMEN[i]: anzahl for i, anzahl in enumerate(s.profile.counts)
         },
         "gemessene_monate": s.profile.measured_months,
+        "kubikmeter": round(s.profile.annual * c.correction / max(c.liter_per_m3, 0.1), 1),
         "energie_kwh": round(s.profile.annual * c.correction * c.kwh_per_liter),
         "kosten_eur": round(s.profile.annual * c.correction * c.price),
     }
@@ -276,6 +331,24 @@ class TankSensor(CoordinatorEntity[TankCoordinator], SensorEntity):
     @property
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self.coordinator.data, self.coordinator)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Wann der Zähler zuletzt bei 0 stand.
+
+        Nur die Jahreswerte haben das: Sie fallen zum Jahreswechsel auf 0
+        zurück. Mit einem ausdrücklichen Zeitpunkt muss Home Assistant den
+        Rücksprung nicht aus einem Rückgang erraten – ein kleiner Rückgang
+        mitten im Jahr (etwa nach einer Nachkalibrierung des Faktors) wird
+        damit nicht versehentlich als Jahreswechsel gelesen.
+        """
+        if self.entity_description.last_reset_fn is None:
+            return None
+        if self.coordinator.data is None:
+            return None
+        return self.entity_description.last_reset_fn(
+            self.coordinator.data, self.coordinator
+        )
 
     @property
     def available(self) -> bool:

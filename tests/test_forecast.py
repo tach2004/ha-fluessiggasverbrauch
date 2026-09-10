@@ -23,7 +23,11 @@ for name in ("const", "forecast"):
     spec.loader.exec_module(modul)
 
 from fluessiggas.const import DEFAULT_ANNUAL, STANDARD_SHARE  # noqa: E402
-from fluessiggas.forecast import build_profile, simulate  # noqa: E402
+from fluessiggas.forecast import (  # noqa: E402
+    build_profile,
+    expected_to_date,
+    simulate,
+)
 
 HEUTE = date(2026, 9, 2)
 
@@ -127,6 +131,68 @@ def test_reichweite_ueber_sechs_jahre_bleibt_offen():
     profil = build_profile({(2025, m): 1.0 for m in range(1, 13)}, 2, HEUTE)
     p = simulate(4120.0, profil, 400.0, 21, HEUTE)
     assert p.days_to_empty is None, "keine Fantasiedaten jenseits des Horizonts"
+
+
+# ------------------------------------------------- Erwartung bis heute
+
+
+def _profil(liter_je_monat: list[float]):
+    """Profil mit vorgegebenen Monatswerten, alle als gemessen markiert."""
+    from fluessiggas.forecast import Profile
+
+    return Profile(liters=list(liter_je_monat), counts=[1] * 12)
+
+
+def test_erwartung_zaehlt_abgeschlossene_monate_voll():
+    profil = _profil([100] * 12)
+    # 1. April: Januar bis März sind vorbei, der April noch nicht angefangen
+    assert expected_to_date(profil, date(2026, 4, 1)) == 300
+
+
+def test_erwartung_rechnet_den_laufenden_monat_anteilig():
+    profil = _profil([0] * 3 + [300] + [0] * 8)
+    # 11. April: zehn von 30 Tagen sind vorbei
+    assert abs(expected_to_date(profil, date(2026, 4, 11)) - 100) < 1e-9
+
+
+def test_erwartung_am_jahresanfang_ist_null():
+    assert expected_to_date(_profil([100] * 12), date(2026, 1, 1)) == 0
+
+
+def test_erwartung_am_jahresende_ist_fast_das_ganze_jahr():
+    profil = _profil([100] * 12)
+    erwartet = expected_to_date(profil, date(2026, 12, 31))
+    assert 1100 < erwartet < 1200
+    assert erwartet < profil.annual
+
+
+def test_erwartung_folgt_der_heizkurve_nicht_dem_kalender():
+    """Der eigentliche Grund für die Funktion.
+
+    Der verheizte Anteil des Jahres läuft dem Kalender voraus und dann
+    nachher: Anfang Mai sind knapp 49 % des Jahresverbrauchs weg, obwohl erst
+    ein Drittel des Jahres vorbei ist – Anfang September ist es umgekehrt.
+    Ein Vergleich über den Kalenderanteil läge in beiden Richtungen daneben.
+    """
+    profil = build_profile({}, 2, HEUTE)   # Standard-Heizkurve
+    anteil = lambda tag: expected_to_date(profil, tag) / profil.annual  # noqa: E731
+    kalender = lambda tag: (tag - date(tag.year, 1, 1)).days / 365      # noqa: E731
+
+    mai = date(2026, 5, 1)
+    assert anteil(mai) - kalender(mai) > 0.10, anteil(mai)
+
+    november = date(2026, 11, 1)
+    assert anteil(november) - kalender(november) < -0.10, anteil(november)
+
+
+def test_erwartung_waechst_monoton():
+    profil = build_profile({}, 2, HEUTE)
+    vorher = -1.0
+    for monat in range(1, 13):
+        for tag in (1, 15, 28):
+            wert = expected_to_date(profil, date(2026, monat, tag))
+            assert wert >= vorher, (monat, tag)
+            vorher = wert
 
 
 if __name__ == "__main__":

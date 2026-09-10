@@ -33,7 +33,7 @@ const LPG_VERSION = new URL(import.meta.url).searchParams.get("v") || "unbekannt
 const KENNUNGEN = [
   "inhalt", "inhalt_prozent", "inhalt_nutzbar", "restenergie", "restwert",
   "gaspreis", "umrechnungsfaktor", "verbrauch_seit_betankung", "tagesverbrauch",
-  "jahresverbrauch",
+  "jahr_liter", "jahr_kubik", "jahr_energie", "jahresverbrauch",
   "reichweite", "leer_am", "reserve_am", "bestellen_bis", "letzte_betankung",
 ];
 
@@ -47,6 +47,7 @@ const DEFAULTS = {
   betankung: true,    // Betankungsformular anbieten
   verlauf: true,      // Restverlauf der kommenden Monate zeichnen
   preisverlauf: true, // Preisentwicklung der eingetragenen Lieferungen
+  jahr: true,         // Verbrauch des laufenden Kalenderjahres in drei Einheiten
   wellen: true,       // Wellenanimation
 };
 
@@ -228,6 +229,12 @@ class LpgTankCard extends HTMLElement {
 
         .abschnitt {
           display: flex; justify-content: space-between; align-items: baseline;
+          /* Umbrechen statt kollidieren: In einer schmalen Spalte klebten
+             die beiden Beschriftungen sonst aneinander. Bewusst ohne
+             Spaltenabstand - space-between verteilt den Platz ohnehin, und
+             ein Mindestabstand würde die einzeilige Darstellung zu früh
+             sprengen. */
+          flex-wrap: wrap; row-gap: 2px;
           font-size: .78rem; color: var(--secondary-text-color);
           border-top: 1px solid var(--divider-color); padding-top: 10px;
         }
@@ -260,6 +267,18 @@ class LpgTankCard extends HTMLElement {
         .kachel .k-label { font-size: .75rem; color: var(--secondary-text-color); }
         .kachel .k-wert { font-size: 1.05rem; font-weight: 500; color: var(--primary-text-color); }
         .kachel .k-zusatz { font-size: .72rem; color: var(--secondary-text-color); }
+
+        /* Die drei Jahreswerte sind dieselbe Menge in drei Einheiten. Sie
+           stehen deshalb in einer eigenen, schmaleren Reihe statt als drei
+           volle Kacheln - sonst erschlagen sie die Karte. */
+        .jahr {
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+          gap: 8px; margin-top: 8px;
+        }
+        .jahr .kachel { padding: 8px; }
+        /* Kein nowrap: In einer sehr schmalen Spalte soll "8.715 kWh"
+           umbrechen und nicht abgeschnitten werden. */
+        .jahr .kachel .k-wert { font-size: .9rem; }
 
         .fuss {
           display: flex; flex-wrap: wrap; gap: 4px 16px;
@@ -391,6 +410,14 @@ class LpgTankCard extends HTMLElement {
         <svg id="verlauf" viewBox="0 0 420 96" role="img" aria-label="Restverlauf"></svg>
         <div class="kacheln" id="kacheln"></div>
 
+        <div id="jahrblock" hidden>
+          <div class="abschnitt">
+            <span id="jahr-titel">Verbrauch</span>
+            <span id="jahr-zusatz"></span>
+          </div>
+          <div class="jahr" id="jahr"></div>
+        </div>
+
         <div id="preisblock" hidden>
           <div class="abschnitt">
             <span>Preisentwicklung</span>
@@ -484,6 +511,7 @@ class LpgTankCard extends HTMLElement {
     ["titel", "fehler", "grafik", "liquid", "w1", "w2", "t-prozent", "t-liter", "verlauf",
      "marke-max", "marke-max-text", "marke-reserve", "marke-reserve-text",
      "kacheln", "fuss", "formular", "knopf-form", "preisblock", "preise", "preis-spanne",
+     "jahrblock", "jahr", "jahr-titel", "jahr-zusatz",
      "m-liefermenge", "m-tankuhr", "m-nachtragen", "m-verlauf",
      "block-liefermenge", "block-tankuhr", "block-nachtragen", "block-verlauf",
      "block-datum", "v-liste", "v-rueckgaengig",
@@ -794,22 +822,28 @@ class LpgTankCard extends HTMLElement {
     // ---------------------------------------------------------- Kacheln
     const leerAm = this._datum("leer_am");
     const bestellen = this._datum("bestellen_bis");
-    const reichweite = zahl(this._zustand("reichweite"), null);
     const wert = zahl(this._zustand("restwert"), null);
     const proTag = zahl(this._zustand("tagesverbrauch"), null);
 
     const reserveAm = this._datum("reserve_am");
     const jahr = zahl(this._zustand("jahresverbrauch"), null);
+    const seitZ = this._zustand("verbrauch_seit_betankung");
+    const seit = zahl(seitZ, null);
+    const seitTage = istWert(seitZ) ? (seitZ.attributes || {}).tage : null;
     const kacheln = [
       { label: "Restenergie", wert: this._fmt(energie, 0, "kWh"),
         zusatz: wert !== null ? this._fmt(wert, 0, "EUR") : "", kennung: "restenergie" },
       { label: "Ø Verbrauch", wert: this._fmt(proTag, 1, "L/d"),
-        zusatz: jahr !== null ? `erwartet ${this._fmt(jahr, 0, "L/Jahr")}`
+        zusatz: jahr !== null ? this._erwartet(jahr)
           : (proTag !== null ? this._fmt(proTag * 30, 0, "L/Monat") : ""),
         kennung: jahr !== null ? "jahresverbrauch" : "tagesverbrauch" },
-      { label: "Reichweite", wert: reichweite !== null ? this._fmt(reichweite, 0, "Tage") : "–",
-        zusatz: reichweite !== null ? `≈ ${this._fmt(reichweite / 30.44, 1)} Monate` : "",
-        kennung: "reichweite" },
+      // Eine Kachel "Reichweite" gab es hier auch mal. Die Tage stehen aber
+      // schon unter "Reserve erreicht" und "Voraussichtlich leer" - der
+      // Platz gehört jetzt dem Verbrauch seit der Betankung, der sonst
+      // nirgends auf der Karte auftauchte.
+      { label: "Seit Betankung", wert: this._fmt(seit, 0, "L"),
+        zusatz: seitTage >= 1 ? `über ${this._fmt(seitTage, 0)} Tage` : "",
+        kennung: "verbrauch_seit_betankung" },
       { label: "Reserve erreicht", wert: this._datumText(reserveAm),
         zusatz: this._inTagen(reserveAm), kennung: "reserve_am" },
       { label: "Voraussichtlich leer", wert: this._datumText(leerAm),
@@ -818,16 +852,8 @@ class LpgTankCard extends HTMLElement {
         zusatz: this._inTagen(bestellen, "überfällig"), kennung: "bestellen_bis" },
     ];
 
-    e.kacheln.innerHTML = kacheln.map((k, i) => `
-      <button class="kachel" data-i="${i}">
-        <span class="k-label">${k.label}</span>
-        <span class="k-wert">${k.wert}</span>
-        <span class="k-zusatz">${k.zusatz || "&nbsp;"}</span>
-      </button>`).join("");
-    e.kacheln.querySelectorAll(".kachel").forEach((el) => {
-      const kennung = kacheln[parseInt(el.dataset.i, 10)].kennung;
-      el.addEventListener("click", () => this._mehrInfo(this._ent[kennung]));
-    });
+    this._kachelnZeichnen(e.kacheln, kacheln);
+    this._jahrZeichnen();
 
     // ---------------------------------------------------------- Fußzeile
     const letzte = this._zustand("letzte_betankung");
@@ -854,6 +880,74 @@ class LpgTankCard extends HTMLElement {
     if (this._modus === "verlauf" && this._formOffen) this._verlaufListe();
   }
 
+
+  /**
+   * Kacheln in ein Gitter zeichnen; ein Klick öffnet die Entität dahinter.
+   * `zusatz: null` lässt die dritte Zeile ganz weg - sonst hält ein leeres
+   * &nbsp; die Kachel unnötig hoch.
+   */
+  _kachelnZeichnen(ziel, kacheln) {
+    ziel.innerHTML = kacheln.map((k, i) => `
+      <button class="kachel" data-i="${i}">
+        <span class="k-label">${k.label}</span>
+        <span class="k-wert">${k.wert}</span>` +
+      (k.zusatz === null ? "" : `
+        <span class="k-zusatz">${k.zusatz || "&nbsp;"}</span>`) + `
+      </button>`).join("");
+    ziel.querySelectorAll(".kachel").forEach((el) => {
+      const kennung = kacheln[parseInt(el.dataset.i, 10)].kennung;
+      el.addEventListener("click", () => this._mehrInfo(this._ent[kennung]));
+    });
+  }
+
+  /**
+   * Der erwartete Jahresverbrauch in Litern und Kubikmetern. Die m³ kommen
+   * fertig aus der Integration, damit die Karte den Faktor nicht selbst
+   * anwenden muss - der kalibriert sich schließlich nach.
+   */
+  _erwartet(liter) {
+    const attr = (this._zustand("jahresverbrauch") || {}).attributes || {};
+    const kubik = attr.kubikmeter;
+    return `erw. ${this._fmt(liter, 0, "L")}` +
+      (kubik != null ? ` · ${this._fmt(kubik, 0, "m³")}` : "") + "/Jahr";
+  }
+
+  /**
+   * Verbrauch des laufenden Kalenderjahres in Liter, m³ und kWh - drei
+   * eigene Entitäten, damit jede ihre Langzeitstatistik hat und sich
+   * einzeln anklicken lässt.
+   */
+  _jahrZeichnen() {
+    const e = this._el;
+    if (!e.jahrblock) return;
+    const liter = this._zustand("jahr_liter");
+    if (!this._config.jahr || !istWert(liter)) { e.jahrblock.hidden = true; return; }
+    e.jahrblock.hidden = false;
+
+    const jahr = (liter.attributes || {}).jahr;
+    e["jahr-titel"].textContent = jahr ? `Verbrauch ${jahr}` : "Verbrauch dieses Jahr";
+
+    // Bewusst nicht "x % des Jahres": Der verheizte Anteil läuft dem Kalender
+    // erst voraus und dann nachher (Anfang Mai knapp 49 % bei einem Drittel
+    // Kalenderjahr, Anfang November 70 % bei 83 %). Verglichen wird deshalb
+    // mit dem, was das Monatsprofil bis heute erwartet hätte.
+    const bisher = zahl(liter, null);
+    const erwartet = (liter.attributes || {}).erwartet_bis_heute;
+    e["jahr-zusatz"].textContent = erwartet
+      ? `erwartet bis heute ${this._fmt(erwartet, 0, "L")} ` +
+        `(${bisher >= erwartet ? "+" : "−"}${this._fmt(
+          Math.abs((bisher / erwartet - 1) * 100), 0, "%")})`
+      : "";
+
+    this._kachelnZeichnen(e.jahr, [
+      { label: "Liter", wert: this._fmt(bisher, 0, "L"),
+        zusatz: null, kennung: "jahr_liter" },
+      { label: "Kubik", wert: this._fmt(zahl(this._zustand("jahr_kubik"), null), 0, "m³"),
+        zusatz: null, kennung: "jahr_kubik" },
+      { label: "Energie", wert: this._fmt(zahl(this._zustand("jahr_energie"), null), 0, "kWh"),
+        zusatz: null, kennung: "jahr_energie" },
+    ]);
+  }
 
   /**
    * Restverlauf der kommenden Monate aus dem Attribut "monate" der

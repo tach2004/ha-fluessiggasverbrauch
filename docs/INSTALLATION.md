@@ -173,11 +173,24 @@ Ohne Eintrag bleibt es beim Verlauf aus den Lieferungen.
 
 ## 7. Monatsprofil prüfen
 
-Der Sensor **Jahresverbrauch** trägt die Attribute `monatsprofil` (Liter je
-Monat) und `gemessene_jahre`. Steht dort überall eine 0, gab es noch keine
-Statistik – dann ist die Kurve geschätzt. Mit
+Der Sensor **Erwarteter Jahresverbrauch** trägt die Attribute `monatsprofil`
+(Liter je Monat), `gemessene_jahre` und `kubikmeter`. Steht bei den Jahren
+überall eine 0, gab es noch keine Statistik – dann ist die Kurve geschätzt. Mit
 `fluessiggas.profil_neu_berechnen` liest die Integration sofort neu ein;
-sonst passiert das alle sechs Stunden von allein.
+sonst passiert das einmal täglich von allein.
+
+## 8. Jahresverbrauch prüfen
+
+Die Heizungszähler sind Jahreszähler: Sie fallen zum Jahreswechsel auf 0
+zurück. Dass die Rechnung darüber hinweg stimmt, hängt daran, dass sie
+`state_class: total_increasing` oder `total` tragen – nur dann erkennt Home
+Assistant den Rücksprung als Zählerreset. Nachsehen kannst du es im Attribut
+`quellen` des Sensors **Verbrauch dieses Jahr**; dort steht je Zähler, was
+tatsächlich anliegt.
+
+Bleibt der Wert `unknown`, reicht die Statistik nicht bis zum 1. Januar zurück
+(eine frische Installation im laufenden Jahr). Ab dem nächsten Jahreswechsel
+stimmt er, vorher hilft nichts – die Daten gibt es dann eben nicht.
 
 ## Fehlersuche
 
@@ -188,6 +201,7 @@ sonst passiert das alle sechs Stunden von allein.
 | Füllstand sinkt nicht | Falscher Quellsensor – prüfe, ob *Verbrauch seit Betankung* steigt. |
 | Füllstand sinkt zu schnell | Faktor L/m³ – bei der nächsten Betankung die Tankuhr vorher angeben. |
 | Reichweite `unknown` | Rechnerisch mehr als sechs Jahre, oder Jahresverbrauch 0. |
+| *Verbrauch dieses Jahr* `unknown` | Keine Statistik zum 1. Januar – siehe Schritt 8. |
 | Karte erscheint sporadisch nicht | Sollte seit 1.4.0 behoben sein: Die Kartendatei wird jetzt vom Browser zwischengespeichert. Das Frontend gibt einer Custom Card nur zwei Sekunden, und ohne Cache wurde sie bei jedem Seitenaufruf neu geladen. |
 | Karte nicht im Picker, „custom element doesn't exist" | Einmalig nach dem Update auf 1.2.0: Der Service Worker des Frontends liefert Seiten aus einem 24-Stunden-Cache. In der Companion-App *Einstellungen → Companion App → Frontend-Cache zurücksetzen*, im Browser Strg+F5 bzw. Websitedaten löschen. Ab 1.2.0 kommt die Karte über die Ressourcenliste (Websocket, nicht gecacht) und das Problem verschwindet. |
 | „Keine Integration gefunden" | Der Tank ist noch nicht eingerichtet. |
