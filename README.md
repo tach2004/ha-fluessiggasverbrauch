@@ -316,6 +316,19 @@ mitliefern. Das fertige Symbol liegt in [`brands/`](brands/) samt Anleitung zum
 Eintragen. Die Symbole der Entitäten und Dienste bestimmt die Integration
 dagegen selbst – die wirken sofort.
 
+## Entwicklung
+
+Die Karte wird vorkomprimiert mit ausgeliefert – aiohttp nimmt das
+`.gz`-Geschwisterfile automatisch, sobald der Browser gzip akzeptiert. Nach
+jeder Änderung an `lpg-tank-card.js` deshalb:
+
+```bash
+python3 scripts/karte_komprimieren.py
+```
+
+Ein Test vergleicht das Archiv byteweise mit der Karte und schlägt fehl, wenn
+es veraltet ist.
+
 ## Tests
 
 ```bash

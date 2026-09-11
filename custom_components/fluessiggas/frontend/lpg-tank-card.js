@@ -908,8 +908,11 @@ class LpgTankCard extends HTMLElement {
   _erwartet(liter) {
     const attr = (this._zustand("jahresverbrauch") || {}).attributes || {};
     const kubik = attr.kubikmeter;
+    // Eine Nachkommastelle bei den m³: Ein ganzer Kubikmeter sind rund
+    // 3,9 Liter - auf ganze m³ gerundet wäre die Anzeige um bis zu zwei
+    // Liter daneben, und das fällt beim Vergleich mit der Literzahl auf.
     return `erw. ${this._fmt(liter, 0, "L")}` +
-      (kubik != null ? ` · ${this._fmt(kubik, 0, "m³")}` : "") + "/Jahr";
+      (kubik != null ? ` · ${this._fmt(kubik, 1, "m³")}` : "") + "/Jahr";
   }
 
   /**
@@ -942,7 +945,7 @@ class LpgTankCard extends HTMLElement {
     this._kachelnZeichnen(e.jahr, [
       { label: "Liter", wert: this._fmt(bisher, 0, "L"),
         zusatz: null, kennung: "jahr_liter" },
-      { label: "Kubik", wert: this._fmt(zahl(this._zustand("jahr_kubik"), null), 0, "m³"),
+      { label: "Kubik", wert: this._fmt(zahl(this._zustand("jahr_kubik"), null), 1, "m³"),
         zusatz: null, kennung: "jahr_kubik" },
       { label: "Energie", wert: this._fmt(zahl(this._zustand("jahr_energie"), null), 0, "kWh"),
         zusatz: null, kennung: "jahr_energie" },

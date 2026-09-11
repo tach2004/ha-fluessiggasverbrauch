@@ -155,8 +155,10 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         value_fn=lambda s, c: s.year_liters,
         last_reset_fn=lambda s, c: s.year_start,
         attrs_fn=lambda s, c: {
-            "jahr": s.year_start.year if s.year_start else None,
-            "seit": s.year_start.isoformat() if s.year_start else None,
+            # Beides bewusst in Ortszeit: year_start ist ein UTC-Instant, und
+            # dessen .year ist in Mitteleuropa am 1. Januar noch das Vorjahr.
+            "jahr": s.year,
+            "seit": dt_util.as_local(s.year_start).isoformat() if s.year_start else None,
             # Ohne Vergleichswert ist die Zahl schwer zu deuten: Die Heizkurve
             # ist nicht gleichmäßig über das Jahr verteilt.
             "erwartet_bis_heute": s.year_expected,

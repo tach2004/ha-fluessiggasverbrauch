@@ -271,6 +271,19 @@ Zähler das Signal für einen Reset. Die Langzeitstatistik hätte den
 Jahresverbrauch doppelt gezählt. Über die Differenz zur Summe kann das nicht
 passieren, weil die Summe selbst nie sinkt.
 
+### Die Zeitzonen-Falle beim Jahresanfang
+
+`year_start` ist ein UTC-Zeitpunkt, weil Home Assistant für `last_reset` genau
+das erwartet. Zum Anzeigen taugt er nicht: Die lokale Mitternacht des
+1. Januar 2026 ist in Mitteleuropa `2025-12-31T23:00:00Z`. Ein `.year` darauf
+liefert **2025**.
+
+Genau das ist in 2.0.0 passiert – die Karte zeigte „Verbrauch 2025", während
+2026 lief. Der gerechnete Wert war richtig, die Beschriftung nicht. Das
+Kalenderjahr wird deshalb getrennt in Ortszeit mitgeführt, und das Attribut
+`seit` steht als lokale Zeit da (`2026-01-01T00:00:00+01:00`) statt als
+UTC-Zeitpunkt vom Vorjahr.
+
 ### Warum `total` mit `last_reset` und nicht `total_increasing`
 
 Die drei Jahressensoren melden den 1. Januar ausdrücklich als `last_reset`.
@@ -392,10 +405,43 @@ Cache-Header. Der Browser lud die knapp 40 kB bei *jedem* Seitenaufruf neu. Auf
 einem beschäftigten Home Assistant – etwa direkt nach dem Start, wenn der
 Recorder arbeitet – reichen zwei Sekunden dafür nicht zuverlässig.
 
-Mit `cache_headers=True` liefert Home Assistant langlebige Cache-Header. Das
-ist hier gefahrlos, weil die URL die Version trägt (`?v=1.4.0`): Nach einem
-Update ändert sich die URL, der Browser holt die Datei neu, und dazwischen
-kommt sie aus dem lokalen Cache statt über das Netz.
+Mit `cache_headers=True` liefert Home Assistant langlebige Cache-Header
+(`public, max-age=2678400`, also 31 Tage). Das ist hier gefahrlos, weil die URL
+die Version trägt (`?v=1.4.0`): Nach einem Update ändert sich die URL, der
+Browser holt die Datei neu, und dazwischen kommt sie aus dem lokalen Cache
+statt über das Netz.
+
+### Und wenn der Cache nicht greift: 16 statt 53 kB
+
+Der Cache hilft nur beim zweiten Aufruf. Beim ersten – und nach jedem Update,
+weil die URL sich ändert – zählt die reine Übertragungszeit, und die iOS-App
+ist nach einem „nach unten ziehen" genau in diesem Fall. Seit 2.0.1 liegt
+deshalb neben der Karte ein vorkomprimiertes `lpg-tank-card.js.gz`.
+
+Ausgeliefert wird es ohne jedes Zutun: aiohttp – und damit Home Assistant –
+sucht bei einer `FileResponse` nach einem Geschwisterfile mit der Endung
+`.gz` (oder `.br`), sobald der Browser die Kodierung akzeptiert, und setzt
+`Content-Encoding: gzip` samt `Vary: Accept-Encoding`. Gemessen an der echten
+Bibliothek:
+
+| Anfrage | Übertragen | Header |
+|---|---|---|
+| `Accept-Encoding: gzip` | 15.726 B | `Content-Encoding: gzip`, `Vary: Accept-Encoding` |
+| `Accept-Encoding: identity` | 52.844 B | – |
+
+Also **70 % weniger** im entscheidenden Fenster. Und ohne Risiko: Fehlt die
+Datei oder kann der Browser kein gzip, wird die unkomprimierte Karte
+ausgeliefert. Das `Vary` verhindert, dass ein vorgeschalteter nginx die
+gepackte Antwort an einen Client ohne gzip weitergibt.
+
+Der Preis ist eine erzeugte Datei im Repository, und die könnte veralten –
+stillschweigend, denn sie würde alten Code genau an die Browser ausliefern,
+die gzip können, also an alle. Dagegen steht ein Test, der sie entpackt und
+byteweise mit der Karte vergleicht. Neu erzeugt wird sie mit:
+
+```bash
+python3 scripts/karte_komprimieren.py
+```
 
 ## Vertippt: warum Rückgängig und nicht Bearbeiten
 

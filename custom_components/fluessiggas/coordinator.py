@@ -144,7 +144,13 @@ class TankState:
     #: Verbrauch im laufenden Kalenderjahr; None, solange der Bezugspunkt
     #: zum Jahresanfang nicht bestimmt werden konnte
     year_liters: float | None = None
+    #: Zeitpunkt des Jahresanfangs – als UTC-Instant, denn genau das erwartet
+    #: Home Assistant für last_reset. Zum Anzeigen taugt er nicht: In
+    #: Mitteleuropa ist die lokale Mitternacht des 1. Januar in UTC noch der
+    #: 31. Dezember, ein .year darauf zeigt also das Vorjahr.
     year_start: datetime | None = None
+    #: Das Kalenderjahr in Ortszeit – die Zahl, die angezeigt werden soll
+    year: int | None = None
     #: Was das Monatsprofil bis heute erwartet hätte – der Vergleichswert
     year_expected: float | None = None
 
@@ -954,6 +960,7 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             missing_sources=fehlend,
             year_liters=round(jahr_liter, 1) if jahr_liter is not None else None,
             year_start=self.year_start(),
+            year=dt_util.now().year,
             year_expected=(
                 round(expected_to_date(self._profile, dt_util.now().date())
                       * self.correction, 1)
