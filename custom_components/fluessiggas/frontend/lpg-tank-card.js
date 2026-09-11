@@ -908,8 +908,11 @@ class LpgTankCard extends HTMLElement {
   _erwartet(liter) {
     const attr = (this._zustand("jahresverbrauch") || {}).attributes || {};
     const kubik = attr.kubikmeter;
+    // Eine Nachkommastelle bei den m³: Ein ganzer Kubikmeter sind rund
+    // 3,9 Liter - auf ganze m³ gerundet wäre die Anzeige um bis zu zwei
+    // Liter daneben, und das fällt beim Vergleich mit der Literzahl auf.
     return `erw. ${this._fmt(liter, 0, "L")}` +
-      (kubik != null ? ` · ${this._fmt(kubik, 0, "m³")}` : "") + "/Jahr";
+      (kubik != null ? ` · ${this._fmt(kubik, 1, "m³")}` : "") + "/Jahr";
   }
 
   /**
@@ -942,7 +945,7 @@ class LpgTankCard extends HTMLElement {
     this._kachelnZeichnen(e.jahr, [
       { label: "Liter", wert: this._fmt(bisher, 0, "L"),
         zusatz: null, kennung: "jahr_liter" },
-      { label: "Kubik", wert: this._fmt(zahl(this._zustand("jahr_kubik"), null), 0, "m³"),
+      { label: "Kubik", wert: this._fmt(zahl(this._zustand("jahr_kubik"), null), 1, "m³"),
         zusatz: null, kennung: "jahr_kubik" },
       { label: "Energie", wert: this._fmt(zahl(this._zustand("jahr_energie"), null), 0, "kWh"),
         zusatz: null, kennung: "jahr_energie" },
@@ -1181,13 +1184,26 @@ class LpgTankCard extends HTMLElement {
   }
 }
 
-// Die Karte wird über zwei Wege angemeldet (Zusatzmodul und Lovelace-Ressource).
-// Zeigen beide auf dieselbe URL, lädt der Browser sie nur einmal – aber nach
-// einem Versionswechsel können kurzzeitig beide Varianten im Speicher sein.
-if (!customElements.get("lpg-tank-card")) {
+// Anmelden mit try/catch statt mit einer Abfrage über customElements.get().
+//
+// Home Assistant installiert scoped-custom-element-registry, einen Polyfill,
+// der window.customElements ersetzt. Dessen get() und whenDefined() kennen
+// ausschließlich die eigene Map. Ein get() als Wächter kann deshalb "nicht
+// angemeldet" melden, obwohl die Karte in der nativen Registry längst steht -
+// und dann bliebe die Anmeldung in der Registry aus, die Lovelace befragt.
+//
+// Ein Doppeleintrag in derselben Registry wirft, und das wird hier geschluckt.
+// Ungefangen würde er die Ausführung des Moduls abbrechen - dann fehlte alles,
+// was danach kommt. Genau so verabschieden sich andere Karten im Protokoll.
+try {
   customElements.define("lpg-tank-card", LpgTankCard);
+} catch (fehler) {
+  // Schon in dieser Registry angemeldet. Nichts zu tun.
+}
 
-  window.customCards = window.customCards || [];
+// Eintrag in der Kartenauswahl, ohne Dublette bei doppelter Ausführung
+window.customCards = window.customCards || [];
+if (!window.customCards.some((karte) => karte.type === "lpg-tank-card")) {
   window.customCards.push({
     type: "lpg-tank-card",
     name: "Flüssiggastank",

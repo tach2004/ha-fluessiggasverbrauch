@@ -52,7 +52,10 @@ type: custom:lpg-tank-card
 ```
 
 Mehr braucht es nicht: Die Karte erkennt den Tank an Attributen, die die
-Integration setzt – unabhängig von Sprache und Entity-IDs.
+Integration setzt – unabhängig von Sprache und Entity-IDs. Einen Eintrag unter
+*Einstellungen → Dashboards → Ressourcen* legt die Integration selbst an; nur
+bei YAML-verwaltetem Lovelace muss er von Hand hinein (die URL steht dann im
+Protokoll).
 
 ```yaml
 type: custom:lpg-tank-card
@@ -315,6 +318,19 @@ Home Assistant lädt Integrations-Logos ausschließlich von
 mitliefern. Das fertige Symbol liegt in [`brands/`](brands/) samt Anleitung zum
 Eintragen. Die Symbole der Entitäten und Dienste bestimmt die Integration
 dagegen selbst – die wirken sofort.
+
+## Entwicklung
+
+Die Karte wird vorkomprimiert mit ausgeliefert – aiohttp nimmt das
+`.gz`-Geschwisterfile automatisch, sobald der Browser gzip akzeptiert. Nach
+jeder Änderung an `lpg-tank-card.js` deshalb:
+
+```bash
+python3 scripts/karte_komprimieren.py
+```
+
+Ein Test vergleicht das Archiv byteweise mit der Karte und schlägt fehl, wenn
+es veraltet ist.
 
 ## Tests
 

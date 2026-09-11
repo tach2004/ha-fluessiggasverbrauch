@@ -271,6 +271,19 @@ Zähler das Signal für einen Reset. Die Langzeitstatistik hätte den
 Jahresverbrauch doppelt gezählt. Über die Differenz zur Summe kann das nicht
 passieren, weil die Summe selbst nie sinkt.
 
+### Die Zeitzonen-Falle beim Jahresanfang
+
+`year_start` ist ein UTC-Zeitpunkt, weil Home Assistant für `last_reset` genau
+das erwartet. Zum Anzeigen taugt er nicht: Die lokale Mitternacht des
+1. Januar 2026 ist in Mitteleuropa `2025-12-31T23:00:00Z`. Ein `.year` darauf
+liefert **2025**.
+
+Genau das ist in 2.0.0 passiert – die Karte zeigte „Verbrauch 2025", während
+2026 lief. Der gerechnete Wert war richtig, die Beschriftung nicht. Das
+Kalenderjahr wird deshalb getrennt in Ortszeit mitgeführt, und das Attribut
+`seit` steht als lokale Zeit da (`2026-01-01T00:00:00+01:00`) statt als
+UTC-Zeitpunkt vom Vorjahr.
+
 ### Warum `total` mit `last_reset` und nicht `total_increasing`
 
 Die drei Jahressensoren melden den 1. Januar ausdrücklich als `last_reset`.
@@ -392,10 +405,123 @@ Cache-Header. Der Browser lud die knapp 40 kB bei *jedem* Seitenaufruf neu. Auf
 einem beschäftigten Home Assistant – etwa direkt nach dem Start, wenn der
 Recorder arbeitet – reichen zwei Sekunden dafür nicht zuverlässig.
 
-Mit `cache_headers=True` liefert Home Assistant langlebige Cache-Header. Das
-ist hier gefahrlos, weil die URL die Version trägt (`?v=1.4.0`): Nach einem
-Update ändert sich die URL, der Browser holt die Datei neu, und dazwischen
-kommt sie aus dem lokalen Cache statt über das Netz.
+Mit `cache_headers=True` liefert Home Assistant langlebige Cache-Header
+(`public, max-age=2678400`, also 31 Tage). Das ist hier gefahrlos, weil die URL
+die Version trägt (`?v=1.4.0`): Nach einem Update ändert sich die URL, der
+Browser holt die Datei neu, und dazwischen kommt sie aus dem lokalen Cache
+statt über das Netz.
+
+### Und wenn der Cache nicht greift: 16 statt 53 kB
+
+Der Cache hilft nur beim zweiten Aufruf. Beim ersten – und nach jedem Update,
+weil die URL sich ändert – zählt die reine Übertragungszeit, und die iOS-App
+ist nach einem „nach unten ziehen" genau in diesem Fall. Seit 2.0.1 liegt
+deshalb neben der Karte ein vorkomprimiertes `lpg-tank-card.js.gz`.
+
+Ausgeliefert wird es ohne jedes Zutun: aiohttp – und damit Home Assistant –
+sucht bei einer `FileResponse` nach einem Geschwisterfile mit der Endung
+`.gz` (oder `.br`), sobald der Browser die Kodierung akzeptiert, und setzt
+`Content-Encoding: gzip` samt `Vary: Accept-Encoding`. Gemessen an der echten
+Bibliothek:
+
+| Anfrage | Übertragen | Header |
+|---|---|---|
+| `Accept-Encoding: gzip` | 15.726 B | `Content-Encoding: gzip`, `Vary: Accept-Encoding` |
+| `Accept-Encoding: identity` | 52.844 B | – |
+
+Also **70 % weniger** im entscheidenden Fenster. Und ohne Risiko: Fehlt die
+Datei oder kann der Browser kein gzip, wird die unkomprimierte Karte
+ausgeliefert. Das `Vary` verhindert, dass ein vorgeschalteter nginx die
+gepackte Antwort an einen Client ohne gzip weitergibt.
+
+Der Preis ist eine erzeugte Datei im Repository, und die könnte veralten –
+stillschweigend, denn sie würde alten Code genau an die Browser ausliefern,
+die gzip können, also an alle. Dagegen steht ein Test, der sie entpackt und
+byteweise mit der Karte vergleicht. Neu erzeugt wird sie mit:
+
+```bash
+python3 scripts/karte_komprimieren.py
+```
+
+### Warum `add_extra_js_url` der Fehler war
+
+Auch damit war es nicht erledigt. Auf dem iPhone erschien weiter sporadisch
+„custom element doesn't exist: lpg-tank-card" – nur diese eine Karte, andere
+Karten aus HACS liefen tadellos, und im Firefox war nie etwas. Vier Anläufe
+lang habe ich am falschen Ende gesucht: Cache-Header, Ressourcenliste,
+Dateigröße. Alles half ein bisschen, nichts half wirklich.
+
+Die Spur kam aus dem Protokoll – und zwar von einer **fremden** Karte:
+
+```
+Failed to execute 'define' on 'CustomElementRegistry': the name
+"homematicip-local-climate-schedule-card" has already been used with this registry
+  node_modules/@webcomponents/scoped-custom-element-registry/…
+```
+
+Zwei Dinge stehen darin. Erstens: Module werden in diesem Frontend **mehrfach
+ausgeführt**. Zweitens, und das war der Schlüssel: Home Assistant installiert
+**`scoped-custom-element-registry`**, einen Polyfill, der
+`window.customElements` ersetzt.
+
+Ein Blick in dessen Quelltext erklärt alles:
+
+```ts
+get(tagName: string) {
+  const definition = this._definitionsByTag.get(tagName);
+  return definition?.elementClass;
+}
+```
+
+`get()` und `whenDefined()` befragen **ausschließlich die eigene Map**. Was vor
+der Installation des Polyfills in der nativen Registry angemeldet wurde, ist
+danach unsichtbar – der Polyfill übernimmt nichts.
+
+Und genau dort lag unsere Karte. Sie war die einzige, die über
+`add_extra_js_url` **zusätzlich als Skript-Tag im HTML** steckte. Ein solches
+Modul läuft, sobald das HTML geparst ist – womöglich also, bevor das Frontend
+den Polyfill nachgeladen hat. Dann passiert dies:
+
+| Schritt | Ergebnis |
+|---|---|
+| Unser Modul läuft, `customElements.define(…)` | Karte ist in der **nativen** Registry |
+| Frontend installiert den Polyfill | `window.customElements` ist ersetzt |
+| Lovelace fragt `customElements.get("lpg-tank-card")` | **undefined** → „custom element doesn't exist" |
+| Frontend wartet auf `whenDefined("lpg-tank-card")` | löst **nie** aus → der Fehler bleibt stehen |
+
+Der letzte Punkt erklärt, warum der Fehler nicht von selbst verschwand, obwohl
+das Frontend bei einem nachträglich definierten Element eigentlich
+`ll-rebuild` feuert. Und ob unser Modul vor oder nach dem Polyfill läuft, ist
+ein Rennen – daher „manchmal beim ersten Mal, manchmal nach dem dritten".
+
+Alle anderen Karten kommen ausschließlich über die Lovelace-Ressourcenliste.
+Die lädt das Frontend erst, wenn es selbst läuft, also **nach** dem Polyfill –
+sie melden sich damit in genau der Registry an, die Lovelace anschließend
+befragt. Deshalb funktionierten sie.
+
+Die Behebung ist entsprechend schlicht: **`add_extra_js_url` fällt weg.** Die
+Ressourcenliste ist der einzige Weg, so wie im gesamten Ökosystem. Das
+Nachgemessene aus dem Browser, mit einem nachgebildeten Polyfill:
+
+| Situation | `customElements.get()` |
+|---|---|
+| nativ angemeldet, vor dem Polyfill | `true` |
+| … danach, aus Sicht des Polyfills | **`false`** ← der Fehler |
+| … nach erneuter Ausführung des Moduls | `true` |
+
+Dazu eine Hygienemaßnahme in der Karte: Angemeldet wird jetzt in einem
+`try`/`catch`, statt vorher `customElements.get()` zu befragen. Unter dem
+Polyfill kann diese Abfrage in beide Richtungen lügen, und ein ungefangener
+Doppeleintrag bricht die Ausführung des Moduls ab – so verabschiedet sich die
+Karte im Protokoll oben. Sie ist aber nur die Absicherung, nicht die Behebung:
+Läuft das Modul überhaupt nur einmal und zu früh, hilft kein `catch`. Dagegen
+hilft, gar nicht mehr zu früh zu laufen.
+
+Eine Nebenwirkung bleibt: In YAML-verwaltetem Lovelace gibt es keine
+Ressourcen-Sammlung, in die sich die Integration eintragen könnte. Dort muss
+die Ressource von Hand angelegt werden – die Integration schreibt die
+fertige URL dafür ins Protokoll. Das entspricht dem, was dort für jede
+Custom Card ohnehin nötig ist.
 
 ## Vertippt: warum Rückgängig und nicht Bearbeiten
 

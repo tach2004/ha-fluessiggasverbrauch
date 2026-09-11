@@ -8,7 +8,6 @@ from pathlib import Path
 
 import voluptuous as vol
 
-from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.lovelace import LOVELACE_DATA, MODE_STORAGE
 from homeassistant.config_entries import ConfigEntry
@@ -187,10 +186,16 @@ async def _async_register_card(hass: HomeAssistant) -> None:
         await hass.http.async_register_static_paths(
             [StaticPathConfig(CARD_URL, str(pfad), cache_headers=True)]
         )
-        add_extra_js_url(hass, karten_url(hass))
+        # Früher wurde die Karte hier zusätzlich als Zusatzmodul ins HTML
+        # eingebunden - über add_extra_js_url aus components.frontend. Genau
+        # das war der Grund, warum sie auf dem iPhone zufällig "custom element
+        # doesn't exist" meldete: Ein so eingebundenes Modul läuft womöglich,
+        # bevor das Frontend scoped-custom-element-registry installiert hat.
+        # Die Karte landet dann in der nativen Registry, und der Polyfill
+        # sieht sie nie wieder. Ausführlich in docs/KONZEPT.md.
         # bewusst auf info: Bei Ladeproblemen ist das die erste Frage -
         # wurde die Karte überhaupt und unter welcher URL angemeldet?
-        _LOGGER.info("Lovelace-Karte eingebunden: %s (Datei %s)", karten_url(hass), pfad)
+        _LOGGER.info("Karte wird ausgeliefert unter %s (Datei %s)", karten_url(hass), pfad)
 
     # Die Ressource dagegen bei jeder Einrichtung prüfen: Route und Zusatzmodul
     # gelten für die ganze Laufzeit, der Ressourceneintrag aber wird beim
@@ -203,17 +208,18 @@ async def _async_register_card(hass: HomeAssistant) -> None:
 async def _async_register_resource(hass: HomeAssistant) -> None:
     """Die Karte zusätzlich als Lovelace-Ressource eintragen.
 
-    add_extra_js_url allein genügt nicht: Der Service Worker des Frontends
-    liefert jede Seite mit StaleWhileRevalidate aus einem 24-Stunden-Cache
-    ("First access might bring stale data from cache"), und über HTTPS ist er
-    aktiv. Ein in das HTML gebackenes Skript-Tag fehlt deshalb so lange, bis
-    der Cache nachzieht – die Karte meldet "custom element doesn't exist",
-    beim nächsten Laden geht es, beim übernächsten wieder nicht.
+    Das ist seit 2.0.1 der einzige Weg. Er hat zwei Eigenschaften, auf die es
+    ankommt:
 
-    Die Ressourcenliste holt das Frontend dagegen über den Websocket, und
-    /api/* ist im Service Worker als NetworkOnly registriert. Sie ist damit
-    immer aktuell. Beide Wege zeigen auf dieselbe URL, das Modul wird also
-    trotzdem nur einmal geladen.
+    Die Ressourcenliste holt das Frontend über den Websocket, und /api/* ist im
+    Service Worker als NetworkOnly registriert – sie ist also immer aktuell,
+    anders als ein in das HTML gebackenes Skript-Tag, das bis zu 24 Stunden aus
+    dem StaleWhileRevalidate-Cache kommt.
+
+    Wichtiger noch: Das Frontend lädt diese Ressourcen erst, wenn es selbst
+    läuft. Damit ist der Polyfill scoped-custom-element-registry zu diesem
+    Zeitpunkt installiert, und die Karte meldet sich in der Registry an, die
+    Lovelace anschließend auch befragt. Genau daran scheiterte der zweite Weg.
     """
     if (lovelace := hass.data.get(LOVELACE_DATA)) is None:
         return

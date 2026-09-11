@@ -5,10 +5,13 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -276,6 +279,118 @@ def test_karte_zeigt_die_jahreswerte_statt_der_reichweite():
     assert '_zustand("reichweite")' in karte
     # Erwarteter Jahresverbrauch zusätzlich in m³
     assert "kubikmeter" in karte
+
+
+def test_jahr_wird_in_ortszeit_angezeigt():
+    """Die angezeigte Jahreszahl darf nicht aus dem UTC-Zeitpunkt kommen.
+
+    year_start ist bewusst ein UTC-Instant, weil Home Assistant genau das für
+    last_reset erwartet. Zum Anzeigen taugt er nicht – siehe die Falle unten.
+    """
+    sensor = _quelltext("sensor.py")
+    anfang = sensor.index('key="jahr_liter"')
+    block = sensor[anfang:]
+    block = block[: block.index("TankSensorDescription(", 10)]
+
+    assert '"jahr": s.year,' in block
+    assert "year_start.year" not in block, "Jahr aus dem UTC-Instant gelesen"
+    assert 'dt_util.as_local(s.year_start).isoformat()' in block
+
+    # Das Jahr kommt aus der Ortszeit
+    assert "year=dt_util.now().year," in _quelltext("coordinator.py")
+
+
+def test_utc_instant_des_jahresanfangs_traegt_das_vorjahr():
+    """Die Falle, wegen der es das Feld "year" überhaupt gibt.
+
+    Die lokale Mitternacht des 1. Januar ist in Mitteleuropa in UTC noch der
+    31. Dezember. Ein .year auf diesem Zeitpunkt liefert das Vorjahr – die
+    Karte zeigte deshalb "Verbrauch 2025", während 2026 lief. Der gerechnete
+    Wert war richtig, nur die Beschriftung nicht.
+    """
+    berlin = ZoneInfo("Europe/Berlin")
+    anfang_lokal = datetime(2026, 1, 1, tzinfo=berlin)
+    assert anfang_lokal.year == 2026
+    assert anfang_lokal.astimezone(timezone.utc).year == 2025
+
+
+def test_kubikmeter_werden_mit_nachkommastelle_gezeigt():
+    """Ein m³ sind rund 3,9 Liter – ganze m³ wären bis zu zwei Liter daneben."""
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    for stelle in ('this._fmt(kubik, 1, "m³")',
+                   'this._fmt(zahl(this._zustand("jahr_kubik"), null), 1, "m³")'):
+        assert stelle in karte, stelle
+
+
+def test_karte_kommt_nur_ueber_die_ressourcenliste():
+    """Kein add_extra_js_url – das war die Ursache des Ladefehlers.
+
+    Ein so eingebundenes Modul steckt im HTML und kann laufen, bevor das
+    Frontend scoped-custom-element-registry installiert hat. Der Polyfill
+    ersetzt window.customElements, und sein get()/whenDefined() kennt nur die
+    eigene Map: Was vorher in der nativen Registry landete, ist danach
+    unsichtbar. Lovelace meldet dann "custom element doesn't exist", und weil
+    whenDefined() nie auslöst, bleibt der Fehler auch stehen.
+
+    Die Lovelace-Ressource wird dagegen erst geladen, wenn das Frontend läuft -
+    also nach dem Polyfill, in der Registry, die Lovelace auch befragt.
+    """
+    quelle = _quelltext("__init__.py")
+    assert "add_extra_js_url(" not in quelle
+    assert "from homeassistant.components.frontend import" not in quelle
+    # Der verbleibende Weg muss vorhanden sein
+    assert "async_create_item" in quelle
+    assert '"res_type": "module"' in quelle
+
+    # Lovelace muss vor uns laufen, sonst greift die Anmeldung zu früh ins Leere
+    manifest = _json(INTEGRATION / "manifest.json")
+    assert "lovelace" in manifest.get("after_dependencies", [])
+
+
+def test_karte_meldet_sich_unabhaengig_von_der_registry_an():
+    """customElements.get() taugt nicht als Wächter.
+
+    Unter dem Polyfill kann get() "nicht angemeldet" melden, obwohl die Karte
+    in der nativen Registry steht – und umgekehrt. Angemeldet wird deshalb
+    immer, ein Doppeleintrag in derselben Registry wird geschluckt. Ungefangen
+    bräche er die Ausführung des Moduls ab; genau so verabschieden sich andere
+    Karten im Protokoll.
+    """
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    anmeldung = karte[karte.index("customElements.define(\"lpg-tank-card\"") - 400:]
+
+    assert 'if (!customElements.get("lpg-tank-card"))' not in karte
+    assert "try {" in anmeldung
+    assert "} catch (" in anmeldung
+    # Kein Doppeleintrag in der Kartenauswahl bei doppelter Ausführung
+    assert 'window.customCards.some((karte) => karte.type === "lpg-tank-card")' in karte
+
+
+def test_karte_wird_komprimiert_mitgeliefert():
+    """Neben der Karte muss ein aktuelles .gz liegen.
+
+    aiohttp – und damit Home Assistant – liefert das Geschwisterfile
+    automatisch aus, sobald der Browser gzip akzeptiert (mit Content-Encoding
+    und Vary: Accept-Encoding). Das drückt die Übertragung von rund 52 kB auf
+    rund 16 kB, und genau darauf kommt es an: Das Frontend gibt einer Custom
+    Card nur zwei Sekunden, bis sie sich registriert hat.
+
+    Der Inhaltsvergleich ist der eigentliche Punkt dieses Tests. Ein
+    veraltetes .gz würde stillschweigend alten Code ausliefern, und zwar nur
+    an Browser mit gzip – also praktisch an alle. Neu erzeugen mit:
+
+        python3 scripts/karte_komprimieren.py
+    """
+    karte = INTEGRATION / "frontend" / "lpg-tank-card.js"
+    gepackt = INTEGRATION / "frontend" / "lpg-tank-card.js.gz"
+    assert gepackt.is_file(), "python3 scripts/karte_komprimieren.py ausführen"
+
+    assert gzip.decompress(gepackt.read_bytes()) == karte.read_bytes(), (
+        "lpg-tank-card.js.gz ist veraltet – "
+        "python3 scripts/karte_komprimieren.py ausführen"
+    )
+    anteil = gepackt.stat().st_size / karte.stat().st_size
+    assert anteil < 0.5, f"Kompression bringt nur {anteil:.0%}"
 
 
 def test_karte_wird_mit_ausgeliefert():
