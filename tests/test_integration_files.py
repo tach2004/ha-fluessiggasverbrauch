@@ -322,6 +322,50 @@ def test_kubikmeter_werden_mit_nachkommastelle_gezeigt():
         assert stelle in karte, stelle
 
 
+def test_karte_kommt_nur_ueber_die_ressourcenliste():
+    """Kein add_extra_js_url – das war die Ursache des Ladefehlers.
+
+    Ein so eingebundenes Modul steckt im HTML und kann laufen, bevor das
+    Frontend scoped-custom-element-registry installiert hat. Der Polyfill
+    ersetzt window.customElements, und sein get()/whenDefined() kennt nur die
+    eigene Map: Was vorher in der nativen Registry landete, ist danach
+    unsichtbar. Lovelace meldet dann "custom element doesn't exist", und weil
+    whenDefined() nie auslöst, bleibt der Fehler auch stehen.
+
+    Die Lovelace-Ressource wird dagegen erst geladen, wenn das Frontend läuft -
+    also nach dem Polyfill, in der Registry, die Lovelace auch befragt.
+    """
+    quelle = _quelltext("__init__.py")
+    assert "add_extra_js_url(" not in quelle
+    assert "from homeassistant.components.frontend import" not in quelle
+    # Der verbleibende Weg muss vorhanden sein
+    assert "async_create_item" in quelle
+    assert '"res_type": "module"' in quelle
+
+    # Lovelace muss vor uns laufen, sonst greift die Anmeldung zu früh ins Leere
+    manifest = _json(INTEGRATION / "manifest.json")
+    assert "lovelace" in manifest.get("after_dependencies", [])
+
+
+def test_karte_meldet_sich_unabhaengig_von_der_registry_an():
+    """customElements.get() taugt nicht als Wächter.
+
+    Unter dem Polyfill kann get() "nicht angemeldet" melden, obwohl die Karte
+    in der nativen Registry steht – und umgekehrt. Angemeldet wird deshalb
+    immer, ein Doppeleintrag in derselben Registry wird geschluckt. Ungefangen
+    bräche er die Ausführung des Moduls ab; genau so verabschieden sich andere
+    Karten im Protokoll.
+    """
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    anmeldung = karte[karte.index("customElements.define(\"lpg-tank-card\"") - 400:]
+
+    assert 'if (!customElements.get("lpg-tank-card"))' not in karte
+    assert "try {" in anmeldung
+    assert "} catch (" in anmeldung
+    # Kein Doppeleintrag in der Kartenauswahl bei doppelter Ausführung
+    assert 'window.customCards.some((karte) => karte.type === "lpg-tank-card")' in karte
+
+
 def test_karte_wird_komprimiert_mitgeliefert():
     """Neben der Karte muss ein aktuelles .gz liegen.
 

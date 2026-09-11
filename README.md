@@ -52,7 +52,10 @@ type: custom:lpg-tank-card
 ```
 
 Mehr braucht es nicht: Die Karte erkennt den Tank an Attributen, die die
-Integration setzt – unabhängig von Sprache und Entity-IDs.
+Integration setzt – unabhängig von Sprache und Entity-IDs. Einen Eintrag unter
+*Einstellungen → Dashboards → Ressourcen* legt die Integration selbst an; nur
+bei YAML-verwaltetem Lovelace muss er von Hand hinein (die URL steht dann im
+Protokoll).
 
 ```yaml
 type: custom:lpg-tank-card

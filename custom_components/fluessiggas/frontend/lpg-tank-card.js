@@ -1184,13 +1184,26 @@ class LpgTankCard extends HTMLElement {
   }
 }
 
-// Die Karte wird über zwei Wege angemeldet (Zusatzmodul und Lovelace-Ressource).
-// Zeigen beide auf dieselbe URL, lädt der Browser sie nur einmal – aber nach
-// einem Versionswechsel können kurzzeitig beide Varianten im Speicher sein.
-if (!customElements.get("lpg-tank-card")) {
+// Anmelden mit try/catch statt mit einer Abfrage über customElements.get().
+//
+// Home Assistant installiert scoped-custom-element-registry, einen Polyfill,
+// der window.customElements ersetzt. Dessen get() und whenDefined() kennen
+// ausschließlich die eigene Map. Ein get() als Wächter kann deshalb "nicht
+// angemeldet" melden, obwohl die Karte in der nativen Registry längst steht -
+// und dann bliebe die Anmeldung in der Registry aus, die Lovelace befragt.
+//
+// Ein Doppeleintrag in derselben Registry wirft, und das wird hier geschluckt.
+// Ungefangen würde er die Ausführung des Moduls abbrechen - dann fehlte alles,
+// was danach kommt. Genau so verabschieden sich andere Karten im Protokoll.
+try {
   customElements.define("lpg-tank-card", LpgTankCard);
+} catch (fehler) {
+  // Schon in dieser Registry angemeldet. Nichts zu tun.
+}
 
-  window.customCards = window.customCards || [];
+// Eintrag in der Kartenauswahl, ohne Dublette bei doppelter Ausführung
+window.customCards = window.customCards || [];
+if (!window.customCards.some((karte) => karte.type === "lpg-tank-card")) {
   window.customCards.push({
     type: "lpg-tank-card",
     name: "Flüssiggastank",

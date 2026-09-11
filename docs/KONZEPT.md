@@ -443,6 +443,86 @@ byteweise mit der Karte vergleicht. Neu erzeugt wird sie mit:
 python3 scripts/karte_komprimieren.py
 ```
 
+### Warum `add_extra_js_url` der Fehler war
+
+Auch damit war es nicht erledigt. Auf dem iPhone erschien weiter sporadisch
+„custom element doesn't exist: lpg-tank-card" – nur diese eine Karte, andere
+Karten aus HACS liefen tadellos, und im Firefox war nie etwas. Vier Anläufe
+lang habe ich am falschen Ende gesucht: Cache-Header, Ressourcenliste,
+Dateigröße. Alles half ein bisschen, nichts half wirklich.
+
+Die Spur kam aus dem Protokoll – und zwar von einer **fremden** Karte:
+
+```
+Failed to execute 'define' on 'CustomElementRegistry': the name
+"homematicip-local-climate-schedule-card" has already been used with this registry
+  node_modules/@webcomponents/scoped-custom-element-registry/…
+```
+
+Zwei Dinge stehen darin. Erstens: Module werden in diesem Frontend **mehrfach
+ausgeführt**. Zweitens, und das war der Schlüssel: Home Assistant installiert
+**`scoped-custom-element-registry`**, einen Polyfill, der
+`window.customElements` ersetzt.
+
+Ein Blick in dessen Quelltext erklärt alles:
+
+```ts
+get(tagName: string) {
+  const definition = this._definitionsByTag.get(tagName);
+  return definition?.elementClass;
+}
+```
+
+`get()` und `whenDefined()` befragen **ausschließlich die eigene Map**. Was vor
+der Installation des Polyfills in der nativen Registry angemeldet wurde, ist
+danach unsichtbar – der Polyfill übernimmt nichts.
+
+Und genau dort lag unsere Karte. Sie war die einzige, die über
+`add_extra_js_url` **zusätzlich als Skript-Tag im HTML** steckte. Ein solches
+Modul läuft, sobald das HTML geparst ist – womöglich also, bevor das Frontend
+den Polyfill nachgeladen hat. Dann passiert dies:
+
+| Schritt | Ergebnis |
+|---|---|
+| Unser Modul läuft, `customElements.define(…)` | Karte ist in der **nativen** Registry |
+| Frontend installiert den Polyfill | `window.customElements` ist ersetzt |
+| Lovelace fragt `customElements.get("lpg-tank-card")` | **undefined** → „custom element doesn't exist" |
+| Frontend wartet auf `whenDefined("lpg-tank-card")` | löst **nie** aus → der Fehler bleibt stehen |
+
+Der letzte Punkt erklärt, warum der Fehler nicht von selbst verschwand, obwohl
+das Frontend bei einem nachträglich definierten Element eigentlich
+`ll-rebuild` feuert. Und ob unser Modul vor oder nach dem Polyfill läuft, ist
+ein Rennen – daher „manchmal beim ersten Mal, manchmal nach dem dritten".
+
+Alle anderen Karten kommen ausschließlich über die Lovelace-Ressourcenliste.
+Die lädt das Frontend erst, wenn es selbst läuft, also **nach** dem Polyfill –
+sie melden sich damit in genau der Registry an, die Lovelace anschließend
+befragt. Deshalb funktionierten sie.
+
+Die Behebung ist entsprechend schlicht: **`add_extra_js_url` fällt weg.** Die
+Ressourcenliste ist der einzige Weg, so wie im gesamten Ökosystem. Das
+Nachgemessene aus dem Browser, mit einem nachgebildeten Polyfill:
+
+| Situation | `customElements.get()` |
+|---|---|
+| nativ angemeldet, vor dem Polyfill | `true` |
+| … danach, aus Sicht des Polyfills | **`false`** ← der Fehler |
+| … nach erneuter Ausführung des Moduls | `true` |
+
+Dazu eine Hygienemaßnahme in der Karte: Angemeldet wird jetzt in einem
+`try`/`catch`, statt vorher `customElements.get()` zu befragen. Unter dem
+Polyfill kann diese Abfrage in beide Richtungen lügen, und ein ungefangener
+Doppeleintrag bricht die Ausführung des Moduls ab – so verabschiedet sich die
+Karte im Protokoll oben. Sie ist aber nur die Absicherung, nicht die Behebung:
+Läuft das Modul überhaupt nur einmal und zu früh, hilft kein `catch`. Dagegen
+hilft, gar nicht mehr zu früh zu laufen.
+
+Eine Nebenwirkung bleibt: In YAML-verwaltetem Lovelace gibt es keine
+Ressourcen-Sammlung, in die sich die Integration eintragen könnte. Dort muss
+die Ressource von Hand angelegt werden – die Integration schreibt die
+fertige URL dafür ins Protokoll. Das entspricht dem, was dort für jede
+Custom Card ohnehin nötig ist.
+
 ## Vertippt: warum Rückgängig und nicht Bearbeiten
 
 Beim Eintragen einer Betankung verstellt die Integration vier Dinge auf einmal:
