@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import voluptuous as vol
 
@@ -50,6 +51,12 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.NUMBER, Platform.SENSOR]
 KARTE_REGISTRIERT = f"{DOMAIN}_karte"
+
+# Diese Integration kennt keine YAML-Konfiguration; eingerichtet wird sie über
+# die Oberfläche. Das ausdrücklich zu sagen ist nicht nur Formsache: Wer
+# "fluessiggas:" in die configuration.yaml schreibt, bekommt damit eine klare
+# Meldung statt eines stillen Nichtstuns.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 def karten_url(hass: HomeAssistant) -> str:
@@ -205,6 +212,24 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     await _async_register_resource(hass)
 
 
+def _ressourcen_modus(lovelace: Any) -> str | None:
+    """Wie Lovelace seine Ressourcen hält: "storage" oder "yaml".
+
+    Das Feld hat sich umbenannt: Bis Home Assistant 2026.1 hieß es ``mode``,
+    seit 2026.2 ``resource_mode`` - Dashboards und Ressourcen können seitdem
+    getrennt im Speicher oder in YAML liegen.
+
+    Beide Namen abzufragen kostet eine Zeile und hält die Integration auf
+    beiden Seiten der Umbenennung lauffähig. Fest auf ``resource_mode`` zu
+    gehen ließ alles unter 2026.2 mit einem AttributeError stehen - und zwar
+    genau an der Stelle, die die Karte einträgt.
+    """
+    for name in ("resource_mode", "mode"):
+        if (wert := getattr(lovelace, name, None)) is not None:
+            return str(wert)
+    return None
+
+
 async def _async_register_resource(hass: HomeAssistant) -> None:
     """Die Karte zusätzlich als Lovelace-Ressource eintragen.
 
@@ -223,7 +248,7 @@ async def _async_register_resource(hass: HomeAssistant) -> None:
     """
     if (lovelace := hass.data.get(LOVELACE_DATA)) is None:
         return
-    if lovelace.resource_mode != MODE_STORAGE:
+    if _ressourcen_modus(lovelace) != MODE_STORAGE:
         _LOGGER.info(
             "Lovelace läuft im YAML-Modus. Bitte '%s' von Hand als Ressource "
             "vom Typ 'module' eintragen",
@@ -255,7 +280,7 @@ async def _async_remove_resource(hass: HomeAssistant) -> None:
     """
     if (lovelace := hass.data.get(LOVELACE_DATA)) is None:
         return
-    if lovelace.resource_mode != MODE_STORAGE:
+    if _ressourcen_modus(lovelace) != MODE_STORAGE:
         return
     ressourcen = lovelace.resources
     await ressourcen.async_get_info()
