@@ -1,6 +1,6 @@
 {
   "name": "Flüssiggastank",
   "content_in_root": false,
-  "homeassistant": "2024.11.0",
+  "homeassistant": "2025.2.0",
   "render_readme": true
 }

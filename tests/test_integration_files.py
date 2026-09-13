@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import ast
 import gzip
 import json
 import re
@@ -403,6 +404,56 @@ def test_hacs_konfiguration():
     hacs = _json(WURZEL / "hacs.json")
     assert hacs["content_in_root"] is False
     assert "homeassistant" in hacs
+
+
+def test_mindestversion_ist_belegt():
+    """2025.2.0 ist die Fassung, in der LOVELACE_DATA eingeführt wurde.
+
+    Davor lag Lovelace als einfaches Dict unter hass.data["lovelace"], und der
+    Import in __init__.py schlüge fehl. Vorher stand hier 2024.11.0 - eine
+    Zahl, die nie geprüft war und ein Versprechen gab, das der Code nicht
+    halten konnte.
+    """
+    assert _json(WURZEL / "hacs.json")["homeassistant"] == "2025.2.0"
+
+
+def test_lovelace_feldname_wird_nicht_fest_verdrahtet():
+    """Das Feld heißt bis 2026.1 "mode" und ab 2026.2 "resource_mode".
+
+    Ein direkter Zugriff auf einen der beiden Namen lässt die halbe Bandbreite
+    der unterstützten Home-Assistant-Fassungen mit einem AttributeError
+    stehen - und zwar genau beim Eintragen der Karte.
+    """
+    quelle = _quelltext("__init__.py")
+    benutzt = {
+        f"{knoten.value.id}.{knoten.attr}"
+        for knoten in ast.walk(ast.parse(quelle))
+        if isinstance(knoten, ast.Attribute) and isinstance(knoten.value, ast.Name)
+    }
+    assert "lovelace.resource_mode" not in benutzt
+    assert "lovelace.mode" not in benutzt
+    assert "_ressourcen_modus" in quelle
+
+
+def test_marke_wird_mit_ausgeliefert():
+    """Der Ordner "brand" neben den Modulen ist das ganze Geheimnis.
+
+    Home Assistant erkennt daran (has_branding = "brand" in _top_level_files),
+    dass die Integration ein eigenes Logo mitbringt, und liefert es ab 2026.3
+    unter /api/brands/integration/fluessiggas/icon.png aus. Ohne diesen Ordner
+    steht in HACS das Puzzleteil.
+    """
+    marke = INTEGRATION / "brand"
+    assert marke.is_dir()
+    for name, kante in (("icon.png", 256), ("icon@2x.png", 512)):
+        datei = marke / name
+        assert datei.is_file(), name
+        # PNG-Kopf: Breite und Höhe stehen als 32-Bit-Zahlen ab Byte 16.
+        kopf = datei.read_bytes()[:24]
+        assert kopf[:8] == b"\x89PNG\r\n\x1a\n", name
+        breite = int.from_bytes(kopf[16:20], "big")
+        hoehe = int.from_bytes(kopf[20:24], "big")
+        assert (breite, hoehe) == (kante, kante), f"{name}: {breite}x{hoehe}"
 
 
 if __name__ == "__main__":
