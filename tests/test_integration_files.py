@@ -406,6 +406,23 @@ def test_hacs_konfiguration():
     assert "homeassistant" in hacs
 
 
+def test_manifest_schluessel_sind_sortiert():
+    """hassfest verlangt: domain, name, dann alphabetisch.
+
+    Das gilt auch für benutzerdefinierte Integrationen.
+    """
+    schluessel = list(_json(INTEGRATION / "manifest.json"))
+    assert schluessel[:2] == ["domain", "name"]
+    assert schluessel[2:] == sorted(schluessel[2:]), schluessel
+
+
+def test_config_schema_ist_gesetzt():
+    """Wer async_setup hat, muss ein CONFIG_SCHEMA angeben - sagt hassfest."""
+    quelle = _quelltext("__init__.py")
+    assert "cv.config_entry_only_config_schema" in quelle
+    assert "CONFIG_SCHEMA" in quelle
+
+
 def test_mindestversion_ist_belegt():
     """2025.2.0 ist die Fassung, in der LOVELACE_DATA eingeführt wurde.
 
