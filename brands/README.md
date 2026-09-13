@@ -18,7 +18,7 @@ reicht dessen Bilder unter
 /api/brands/integration/fluessiggas/icon.png
 ```
 
-heraus. HACS und der Dialog *Integration hinzufügen* zeigen damit dieses
+heraus. Der Dialog *Integration hinzufügen* zeigen damit dieses
 Symbol statt des Puzzleteils.
 
 Bis 2026.2 ging das nicht – Logos kamen ausschließlich von
