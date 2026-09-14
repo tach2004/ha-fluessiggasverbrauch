@@ -25,8 +25,8 @@ kamen ausschließlich von `brands.home-assistant.io`.
 
 ## In HACS: der lokale Ordner genügt **nicht**
 
-Das stand hier vorher falsch, deshalb ausführlich. HACS zeigt das lokale Logo
-**nicht**, und es zeigt auch kein Ersatzsymbol – die Spalte bleibt leer.
+Das stand hier vorher falsch, deshalb ausführlich. In HACS steht bei der
+Integration ein graues Kästchen mit der Aufschrift *„icon not available"*.
 
 HACS zeichnet das Symbol in
 [`src/dashboards/hacs-dashboard.ts`](https://github.com/hacs/frontend/blob/main/src/dashboards/hacs-dashboard.ts):
@@ -37,34 +37,45 @@ repository.category === "integration"
   : html`<ha-svg-icon .path=${typeIcon(repository.category)}></ha-svg-icon>`
 ```
 
-Zwei Dinge stecken darin:
+**Die URL zeigt auf die CDN, nicht auf Home Assistant.** HACS bindet das
+HA-Frontend als festgepinntes Git-Submodul ein, Commit `3ffbd435` vom
+**9. Januar 2025**. In dieser Fassung liefert `brandsUrl()`
+`https://brands.home-assistant.io/_/<domain>/icon.png`. Die heutige HA-Fassung
+derselben Funktion zeigt dagegen auf
+`/api/brands/integration/<domain>/icon.png` und kennt den Parameter
+`useFallback` gar nicht mehr. HACS müsste sein Submodul nachziehen *und* den
+Aufruf anpassen – von allein wird der lokale Ordner dort nicht gelesen.
 
-1. **Die URL zeigt auf die CDN, nicht auf Home Assistant.** HACS bindet das
-   HA-Frontend als festgepinntes Git-Submodul ein, Commit `3ffbd435` vom
-   **9. Januar 2025**. In dieser Fassung liefert `brandsUrl()`
-   `https://brands.home-assistant.io/_/<domain>/icon.png` – für eine nicht
-   eingetragene Domain also einen 404. Die heutige HA-Fassung derselben
-   Funktion zeigt dagegen auf `/api/brands/integration/<domain>/icon.png` und
-   kennt den Parameter `useFallback` gar nicht mehr. HACS müsste sein Submodul
-   nachziehen *und* den Aufruf anpassen.
-2. **Es gibt keinen Fallback.** Das `<img>` hat kein `onerror`. Der
-   `ha-svg-icon`-Zweig greift nur für andere Kategorien (Karten, Themes,
-   Skripte). In HACS' eigener Symboltabelle
-   ([`src/tools/type-icon.ts`](https://github.com/hacs/frontend/blob/main/src/tools/type-icon.ts))
-   steht `integration: mdiPackageVariant` – für Integrationen ist dieser
-   Eintrag toter Code. Ein 404 hinterlässt deshalb ein leeres Kästchen, kein
-   Platzhaltersymbol.
+**Das `_/` in der URL ist entscheidend** und der Grund, warum sich hier nichts
+mit einem Fallback im Code reparieren lässt. Die
+[brands-Doku](https://github.com/home-assistant/brands) dazu:
+
+> A missing image will result in placeholder image being served telling the
+> logo/icon is missing. This also applies to domains, in case the integration
+> domain is missing.
+
+Die CDN antwortet also mit **HTTP 200 und einem Platzhalterbild**, nicht mit
+einem 404. Für HACS ist das Bild damit erfolgreich geladen; ein `onerror` am
+`<img>` würde nie auslösen. Der Eintrag `integration: mdiPackageVariant` in
+HACS' Symboltabelle
+([`src/tools/type-icon.ts`](https://github.com/hacs/frontend/blob/main/src/tools/type-icon.ts))
+bleibt für Integrationen unerreichbar – erreichbar ist er nur für Karten,
+Themes und Skripte.
+
+Wer in HACS also graue Kategoriesymbole bei anderen Repositories sieht: Das
+sind **Plugins** (Lovelace-Karten), nicht Integrationen ohne Logo. Eine
+Integration zeigt immer entweder ihr Logo aus der CDN oder den
+Platzhalter – ein Puzzleteil gibt es dort für sie nicht.
 
 Das vielzitierte Puzzleteil kommt aus Home Assistant selbst, nicht aus HACS.
 
 ## Damit das Symbol auch in HACS erscheint
 
-Die Domain zusätzlich bei
-[home-assistant/brands](https://github.com/home-assistant/brands) eintragen:
+Dafür gibt es genau einen Weg: die Domain zusätzlich bei
+[home-assistant/brands](https://github.com/home-assistant/brands) eintragen –
 die beiden PNG-Dateien aus `custom_components/fluessiggas/brand/` unverändert
 nach `custom_integrations/fluessiggas/` kopieren und einen Pull Request
-stellen. Danach liefert die CDN-URL kein 404 mehr, und HACS zeigt dasselbe
-Symbol.
+stellen. Danach liefert die CDN-URL das echte Symbol statt des Platzhalters.
 
 Beide Wege beißen sich nicht: Home Assistant nimmt den lokalen Ordner, HACS
 die CDN. Nötig ist der Eintrag nur für die Anzeige in HACS – funktional ändert
