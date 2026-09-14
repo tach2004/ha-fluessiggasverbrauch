@@ -313,11 +313,18 @@ Beispiel: 4.850 L Nennvolumen → 4.122 L nutzbar → rund **28.800 kWh**.
 
 ## Logo
 
-Home Assistant lädt Integrations-Logos ausschließlich von
-`brands.home-assistant.io`; eine custom integration kann ihres nicht
-mitliefern. Das fertige Symbol liegt in [`brands/`](brands/) samt Anleitung zum
-Eintragen. Die Symbole der Entitäten und Dienste bestimmt die Integration
-dagegen selbst – die wirken sofort.
+Seit Home Assistant 2026.3 bringt die Integration ihr Logo selbst mit: Der
+Ordner [`custom_components/fluessiggas/brand/`](custom_components/fluessiggas/brand/)
+genügt, unter *Einstellungen → Geräte & Dienste* erscheint es sofort.
+
+**In HACS bleibt die Spalte leer** – HACS holt Symbole weiter von
+`brands.home-assistant.io` und hat für Integrationen keinen Ersatz, wenn die
+URL ins Leere läuft. Wer es auch dort sehen will, trägt die Domain zusätzlich
+bei [home-assistant/brands](https://github.com/home-assistant/brands) ein.
+Warum das so ist, steht mit Quellenangaben in [`brands/`](brands/).
+
+Die Symbole der Entitäten und Dienste bestimmt die Integration dagegen selbst –
+die wirken sofort.
 
 ## Entwicklung
 
