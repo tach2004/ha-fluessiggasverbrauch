@@ -457,8 +457,12 @@ def test_marke_wird_mit_ausgeliefert():
 
     Home Assistant erkennt daran (has_branding = "brand" in _top_level_files),
     dass die Integration ein eigenes Logo mitbringt, und liefert es ab 2026.3
-    unter /api/brands/integration/fluessiggas/icon.png aus. Ohne diesen Ordner
-    steht in HACS das Puzzleteil.
+    unter /api/brands/integration/fluessiggas/icon.png aus.
+
+    Für HACS gilt das nicht: Das holt Symbole weiter von der CDN und zeigt bei
+    Integrationen auch kein Ersatzsymbol. Die Maße werden hier trotzdem gegen
+    die brands-Vorgaben geprüft, damit die Dateien für einen Eintrag dort
+    unverändert taugen - siehe brands/README.md.
     """
     marke = INTEGRATION / "brand"
     assert marke.is_dir()
