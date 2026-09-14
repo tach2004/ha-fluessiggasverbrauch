@@ -317,11 +317,13 @@ Seit Home Assistant 2026.3 bringt die Integration ihr Logo selbst mit: Der
 Ordner [`custom_components/fluessiggas/brand/`](custom_components/fluessiggas/brand/)
 genügt, unter *Einstellungen → Geräte & Dienste* erscheint es sofort.
 
-**In HACS bleibt die Spalte leer** – HACS holt Symbole weiter von
-`brands.home-assistant.io` und hat für Integrationen keinen Ersatz, wenn die
-URL ins Leere läuft. Wer es auch dort sehen will, trägt die Domain zusätzlich
-bei [home-assistant/brands](https://github.com/home-assistant/brands) ein.
-Warum das so ist, steht mit Quellenangaben in [`brands/`](brands/).
+**In HACS steht dagegen „icon not available"** – HACS holt Symbole weiter von
+`brands.home-assistant.io`, und diese CDN liefert für eine nicht eingetragene
+Domain ein Platzhalterbild aus. Wer das Logo auch dort sehen will, trägt die
+Domain zusätzlich bei
+[home-assistant/brands](https://github.com/home-assistant/brands) ein; einen
+anderen Weg gibt es nicht. Warum, steht mit Quellenangaben in
+[`brands/`](brands/).
 
 Die Symbole der Entitäten und Dienste bestimmt die Integration dagegen selbst –
 die wirken sofort.
