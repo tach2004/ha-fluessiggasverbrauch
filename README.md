@@ -67,6 +67,29 @@ betankung: true        # Betankungsformular
 wellen: true           # Wellenanimation
 ```
 
+### Im Abschnittsdashboard
+
+Die Karte meldet dem Abschnitt ihre Maße selbst, der Ziehgriff funktioniert
+also ohne Zutun. Vorgabe ist volle Breite; schmaler als eine halbe Spalte
+lässt sie sich nicht ziehen, weil das Kachelraster darunter auf eine Spalte
+umbricht und die Karte unnötig lang wird.
+
+Von Hand geht es weiterhin, und deine Angabe hat Vorrang:
+
+```yaml
+type: custom:lpg-tank-card
+grid_options:
+  columns: 6
+```
+
+Die Höhe wächst mit dem Inhalt (`rows: "auto"`) — das Kachelraster bricht je
+nach Breite anders um, und das Betankungsformular klappt auf. Eine feste
+Zeilenzahl würde beides abschneiden.
+
+Im Kachel-Dashboard ändert sich nichts: Das fragt `getCardSize()`, Abschnitte
+fragen `getGridOptions()`. Zwei getrennte Wege, die sich nicht ins Gehege
+kommen.
+
 Die Farbe des Tanks steuert die Integration, nicht die Karte: **rot**, sobald die
 Reserve erreicht ist, **gelb** unterhalb der einstellbaren *Warnschwelle*
 (Vorgabe 30 % der Tankuhr). Rot hat bewusst keine eigene Einstellung – sonst

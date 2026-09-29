@@ -130,6 +130,32 @@ class LpgTankCard extends HTMLElement {
     return this._config && this._config.betankung ? 7 : 6;
   }
 
+  /**
+   * Maße für das Abschnittsdashboard.
+   *
+   * Zwei getrennte Mechanismen: Das Kachel-Dashboard (Masonry) fragt
+   * getCardSize(), Abschnitte fragen getGridOptions(). Beide zu bedienen
+   * kostet nichts und ändert am Kachel-Dashboard nichts.
+   *
+   * Eigene Angaben des Nutzers haben Vorrang - Home Assistant mischt in
+   * hui-card.ts { ...elementOptions, ...configOptions }. Was hier steht, ist
+   * also die Vorgabe und der Bereich des Ziehgriffs, keine Festlegung.
+   *
+   * rows bleibt bewusst "auto": Die Höhe der Karte ist veränderlich, weil das
+   * Kachelraster je nach Breite anders umbricht und das Betankungsformular
+   * aufklappt. Eine feste Zeilenzahl würde beides abschneiden.
+   */
+  getGridOptions() {
+    return {
+      columns: 12,
+      rows: "auto",
+      // Darunter bricht das Kachelraster auf eine Spalte um und die Karte
+      // wird unnötig lang. Nach oben gibt es keine Grenze - volle Breite ist
+      // ohnehin das Maximum des Abschnittsrasters.
+      min_columns: 6,
+    };
+  }
+
   set hass(hass) {
     this._hass = hass;
     if (!this._root) this._aufbauen();
@@ -177,12 +203,20 @@ class LpgTankCard extends HTMLElement {
         .titel {
           font-size: 1.15rem; font-weight: 500; flex: 1;
           color: var(--primary-text-color);
+          /* min-width: 0 ist nötig, damit der Titel schrumpfen darf: Ein
+             Flex-Element geht sonst nie unter seine Inhaltsbreite, und die
+             Kopfzeile lief in einer schmalen Spalte über den Kartenrand
+             hinaus. Statt abzuschneiden wird gekürzt. */
+          min-width: 0;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .kopf-knopf {
           background: none; border: none; cursor: pointer;
           color: var(--secondary-text-color);
           border-radius: 50%; width: 36px; height: 36px;
           display: grid; place-items: center;
+          /* Nicht mitschrumpfen - sonst verzieht sich das Symbol. */
+          flex: 0 0 auto;
         }
         .kopf-knopf:hover { background: var(--secondary-background-color); color: var(--primary-text-color); }
         .kopf-knopf[aria-pressed="true"] { color: var(--primary-color); }

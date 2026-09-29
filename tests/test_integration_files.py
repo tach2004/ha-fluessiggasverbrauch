@@ -367,6 +367,47 @@ def test_karte_meldet_sich_unabhaengig_von_der_registry_an():
     assert 'window.customCards.some((karte) => karte.type === "lpg-tank-card")' in karte
 
 
+def test_karte_meldet_masse_fuer_abschnitte():
+    """Die Karte muss beide Dashboard-Arten bedienen.
+
+    Das Kachel-Dashboard (Masonry) fragt getCardSize(), Abschnitte fragen
+    getGridOptions(). Home Assistant ruft letzteres bei Custom Cards genauso
+    auf wie bei eingebauten (hui-card.ts); ohne die Methode gibt es keine
+    Vorgaben und keinen sinnvollen Bereich für den Ziehgriff.
+    """
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    assert "getCardSize()" in karte
+    assert "getGridOptions()" in karte
+
+    block = karte[karte.index("getGridOptions()"):]
+    block = block[: block.index("\n  }")]
+
+    # Die Höhe der Karte ist veränderlich: Das Kachelraster bricht je nach
+    # Breite anders um, und das Betankungsformular klappt auf. Eine feste
+    # Zeilenzahl würde beides abschneiden.
+    assert 'rows: "auto"' in block
+    assert "min_columns" in block
+    assert not re.search(r"rows:\s*\d", block), "feste Zeilenzahl schneidet ab"
+
+
+def test_kopfzeile_darf_schrumpfen():
+    """Der Titel muss unter seine Inhaltsbreite gehen dürfen.
+
+    Ein Flex-Element schrumpft ohne min-width: 0 nie unter seinen Inhalt. Die
+    Kopfzeile lief dadurch in einer schmalen Abschnittsspalte über den
+    Kartenrand hinaus - gemessen bis etwa 232 px Kartenbreite. Statt
+    überzulaufen wird der Titel jetzt gekürzt.
+    """
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    titel = karte[karte.index(".titel {"):]
+    titel = titel[: titel.index("}")]
+    # Kommentare heraus, sonst findet der Test seine eigene Begründung: Im
+    # Kommentar über der Regel steht "min-width: 0" als Fließtext.
+    titel = re.sub(r"/\*.*?\*/", "", titel, flags=re.S)
+    assert "min-width: 0;" in titel
+    assert "text-overflow: ellipsis" in titel
+
+
 def test_karte_wird_komprimiert_mitgeliefert():
     """Neben der Karte muss ein aktuelles .gz liegen.
 
