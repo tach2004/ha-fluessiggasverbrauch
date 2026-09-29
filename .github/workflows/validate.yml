@@ -62,25 +62,62 @@ jobs:
         # jemandem, der gerade aktualisiert hat.
         run: |
           python - <<'PY'
-          import importlib, pathlib, sys
+          import importlib, logging, pathlib, sys, warnings
 
           sys.path.insert(0, str(pathlib.Path("custom_components").resolve()))
           from homeassistant.const import __version__ as ha_version
 
           print(f"Home Assistant {ha_version}")
-          for name in (
-              "fluessiggas",
-              "fluessiggas.const",
-              "fluessiggas.units",
-              "fluessiggas.history",
-              "fluessiggas.forecast",
-              "fluessiggas.coordinator",
-              "fluessiggas.config_flow",
-              "fluessiggas.sensor",
-              "fluessiggas.number",
-          ):
-              importlib.import_module(name)
-              print(f"  ok  {name}")
+
+          # Veraltete Schnittstellen funktionieren noch - der Import allein
+          # fällt also nicht auf. Home Assistant meldet sie entweder als
+          # DeprecationWarning oder über das Protokoll. Beides wird hier
+          # eingesammelt und macht den Lauf rot, solange es uns betrifft.
+          #
+          # Nicht vollständig: Manche Hinweise kommen erst zur Laufzeit, wenn
+          # die Funktion tatsächlich aufgerufen wird. Der Importpfad deckt ab,
+          # was beim Laden der Module auffällt.
+          protokoll: list[str] = []
+
+          class Sammler(logging.Handler):
+              def emit(self, satz: logging.LogRecord) -> None:
+                  text = satz.getMessage()
+                  if "deprecat" in text.lower() or "veraltet" in text.lower():
+                      protokoll.append(f"{satz.name}: {text}")
+
+          logging.getLogger().addHandler(Sammler())
+          logging.getLogger().setLevel(logging.DEBUG)
+
+          with warnings.catch_warnings(record=True) as gesammelt:
+              warnings.simplefilter("always")
+              for name in (
+                  "fluessiggas",
+                  "fluessiggas.const",
+                  "fluessiggas.units",
+                  "fluessiggas.history",
+                  "fluessiggas.forecast",
+                  "fluessiggas.coordinator",
+                  "fluessiggas.config_flow",
+                  "fluessiggas.sensor",
+                  "fluessiggas.number",
+              ):
+                  importlib.import_module(name)
+                  print(f"  ok  {name}")
+
+          for warnung in gesammelt:
+              if not issubclass(warnung.category, DeprecationWarning):
+                  continue
+              # Nur was aus unseren eigenen Dateien gemeldet wird - fremde
+              # Bibliotheken sollen den Lauf nicht rot machen.
+              if "fluessiggas" in str(warnung.filename):
+                  protokoll.append(f"{warnung.filename}:{warnung.lineno}: {warnung.message}")
+
+          if protokoll:
+              print("\nVeraltete Schnittstellen:")
+              for zeile in protokoll:
+                  print(f"  {zeile}")
+              sys.exit(1)
+          print("\nKeine veralteten Schnittstellen gemeldet.")
           PY
 
   karte:
