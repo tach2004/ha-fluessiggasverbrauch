@@ -39,6 +39,7 @@ DEFAULT_PRICE: Final = 0.70             # EUR/L
 DEFAULT_RESERVE: Final = 970.0          # L – 20 % von 4850 L
 DEFAULT_LEAD_TIME: Final = 21           # Tage Vorlaufzeit der Lieferung
 DEFAULT_PROFILE_YEARS: Final = 2
+VERGLEICH_JAHRE: Final = 1               # Vorjahre für „erwartet bis heute" (1 = nur das letzte Jahr)
 DEFAULT_CORRECTION: Final = 100.0       # %
 DEFAULT_WARN_PERCENT: Final = 30.0      # % der Tankuhr – darunter wird die Karte gelb
 DEFAULT_UPDATE_MINUTES: Final = 15      # min zwischen zwei Statistikabfragen
