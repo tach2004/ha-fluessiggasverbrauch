@@ -195,6 +195,43 @@ def test_erwartung_waechst_monoton():
             vorher = wert
 
 
+def test_vergleichsprofil_ignoriert_das_laufende_jahr():
+    """Der Maßstab für „erwartet bis heute" darf das laufende Jahr nicht enthalten."""
+    historie = {(2025, m): 100.0 for m in range(1, 13)}
+    historie.update({(2026, m): 40.0 for m in range(1, 9)})
+    heute = date(2026, 9, 2)
+
+    mit = build_profile(historie, 2, heute)
+    ohne = build_profile(historie, 2, heute, include_current_year=False)
+
+    assert mit.liters[0] == 70.0          # Prognose-Profil: Mittel aus 2025 und 2026
+    assert ohne.liters[0] == 100.0        # Vergleichs-Profil: nur das Vorjahr
+
+
+def test_erwartung_faellt_am_monatswechsel_nicht():
+    """Regression: 30.09. -> 01.10. fiel von 1065 auf 1051 L.
+
+    Mit dem laufenden Jahr im Profil rückt der gerade abgeschlossene Monat in
+    seinen eigenen Mittelwert und verschiebt die ganze Summe rückwirkend. Das
+    Vergleichsprofil ohne laufendes Jahr darf an keinem Tag des Jahres sinken -
+    auch dann nicht, wenn das Jahr deutlich unter dem Vorjahr liegt.
+    """
+    vorjahre = _historie(date(2024, 7, 1), date(2025, 12, 31))
+    vorjahre[(2024, 9)], vorjahre[(2025, 9)] = 90.0, 70.0
+
+    letzter = 0.0
+    tag = date(2026, 1, 1)
+    while tag.year == 2026:
+        historie = dict(vorjahre)
+        # Monate des laufenden Jahres, die an diesem Tag abgeschlossen sind
+        historie.update({(2026, m): 30.0 for m in range(1, tag.month)})
+        profil = build_profile(historie, 2, tag, include_current_year=False)
+        erwartet = expected_to_date(profil, tag)
+        assert erwartet >= letzter, f"{tag}: {erwartet:.1f} < {letzter:.1f}"
+        letzter = erwartet
+        tag = date.fromordinal(tag.toordinal() + 1)
+
+
 if __name__ == "__main__":
     fehler = 0
     for name, fn in sorted(globals().items()):
