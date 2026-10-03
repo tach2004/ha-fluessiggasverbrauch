@@ -106,7 +106,7 @@ Bestellfrist. Beim Ø Verbrauch steht der erwartete Jahresverbrauch in Litern
 
 Darunter der **Verbrauch des laufenden Kalenderjahres** in Litern, m³ und kWh –
 drei anklickbare Felder, hinter jedem steckt eine eigene Entität mit
-Langzeitstatistik. Daneben, was das Monatsprofil bis heute erwartet hätte:
+Langzeitstatistik. Daneben, was das letzte Jahr bis heute verbraucht hätte (aus dessen Monatswerten, der laufende Monat anteilig):
 `erwartet bis heute 1.180 L (+6 %)`. Bewusst keine Prozentangabe „vom Jahr" –
 der verheizte Anteil läuft dem Kalender erst voraus und dann nachher (Anfang
 Mai knapp 49 % bei einem Drittel Kalenderjahr, Anfang November 70 % bei 83 %).
@@ -158,7 +158,7 @@ Attribute am Liter-Sensor:
 | Attribut | Bedeutung |
 |---|---|
 | `jahr` / `seit` | welches Jahr, und ab wann gezählt wird |
-| `erwartet_bis_heute` | was das Monatsprofil bis heute erwartet hätte |
+| `erwartet_bis_heute` | Vorjahr als Maßstab: Summe seiner Monatswerte bis heute, laufender Monat anteilig |
 | `quellen` | je Zähler: Einheit, `state_class` und der verwendete Liter-Faktor |
 
 Die drei Sensoren tragen `state_class: total` und melden den 1. Januar als
