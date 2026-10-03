@@ -66,12 +66,18 @@ def build_profile(
     monthly: dict[tuple[int, int], float],
     years: int,
     today: date,
+    include_current_year: bool = True,
 ) -> Profile:
     """Monatsprofil aus gemessenen Monatsverbräuchen bilden.
 
     ``monthly`` bildet (Jahr, Monat) auf den Verbrauch in Litern ab. Je
     Kalendermonat werden die letzten ``years`` Jahre gemittelt. Der laufende
     Monat bleibt außen vor, weil er noch nicht vollständig ist.
+
+    ``include_current_year=False`` lässt das laufende Jahr ganz weg. Das
+    braucht der Vergleichswert „erwartet bis heute": Ein Maßstab, in den das
+    laufende Jahr selbst eingeht, ändert sich rückwirkend, sobald ein Monat
+    abgeschlossen ist, und springt dann - auch nach unten.
 
     Monate ohne Messwert werden nicht auf 0 gesetzt, sondern über die Form der
     Standard-Heizkurve ergänzt und dabei auf das Niveau der gemessenen Monate
@@ -81,6 +87,8 @@ def build_profile(
     je_monat: dict[int, list[float]] = {m: [] for m in range(1, 13)}
     for (jahr, monat) in sorted(monthly, reverse=True):
         if (jahr, monat) == (today.year, today.month):
+            continue
+        if not include_current_year and jahr >= today.year:
             continue
         if len(je_monat[monat]) < max(1, years):
             je_monat[monat].append(monthly[(jahr, monat)])

@@ -58,6 +58,7 @@ from .const import (
     MAX_UNDO,
     PRICE_WRITABLE_DOMAINS,
     DEFAULT_PROFILE_YEARS,
+    VERGLEICH_JAHRE,
     DATA_VERSION,
     DEFAULT_WARN_PERCENT,
     DEFAULT_RESERVE,
@@ -186,6 +187,8 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         self._year_for: int | None = None
         self._year_try: datetime | None = None
         self._profile: Profile | None = None
+        # Maßstab für „erwartet bis heute": nur abgeschlossene Vorjahre
+        self._profile_vergleich: Profile | None = None
         self._profile_read: datetime | None = None
         self._profile_task = None
         self._price_history: list[dict[str, Any]] = []
@@ -674,7 +677,7 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         """Monatsverbrauch der letzten Jahre aus der Langzeitstatistik lesen."""
         await self._async_read_units()
         jahre = self.profile_years
-        start = dt_util.utcnow() - timedelta(days=365 * jahre + 62)
+        start = dt_util.utcnow() - timedelta(days=365 * max(jahre, VERGLEICH_JAHRE + 1) + 62)
         recorder = get_instance(self.hass)
         zeilen = await recorder.async_add_executor_job(
             statistics_during_period,
@@ -694,7 +697,11 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
                     0.0, float(aenderung)
                 ) * faktor
 
-        profil = build_profile(monatlich, jahre, dt_util.now().date())
+        heute = dt_util.now().date()
+        self._profile_vergleich = build_profile(
+            monatlich, VERGLEICH_JAHRE, heute, include_current_year=False
+        )
+        profil = build_profile(monatlich, jahre, heute)
         _LOGGER.debug(
             "Monatsprofil neu gelesen: %s L/a aus %s gemessenen Monaten",
             round(profil.annual), profil.measured_months,
@@ -962,9 +969,10 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             year_start=self.year_start(),
             year=dt_util.now().year,
             year_expected=(
-                round(expected_to_date(self._profile, dt_util.now().date())
+                round(expected_to_date(self._profile_vergleich, dt_util.now().date())
                       * self.correction, 1)
-                if self._profile and self._profile.measured_months else None
+                if self._profile_vergleich
+                and self._profile_vergleich.measured_months else None
             ),
         )
 
