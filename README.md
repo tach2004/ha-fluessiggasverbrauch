@@ -62,6 +62,7 @@ type: custom:lpg-tank-card
 tank: Gartenhaus       # nur nötig, wenn mehrere Tanks eingerichtet sind
 verlauf: true          # Restverlauf der kommenden Monate
 preisverlauf: true     # Preisentwicklung der eingetragenen Lieferungen
+heute: true            # Verbrauch seit Mitternacht in L, m³ und kWh
 jahr: true             # Verbrauch des laufenden Jahres in L, m³ und kWh
 betankung: true        # Betankungsformular
 wellen: true           # Wellenanimation
@@ -104,7 +105,8 @@ Verbrauch seit der Betankung, **Reserve erreicht**, voraussichtlich leer und
 Bestellfrist. Beim Ø Verbrauch steht der erwartete Jahresverbrauch in Litern
 *und* Kubikmetern.
 
-Darunter der **Verbrauch des laufenden Kalenderjahres** in Litern, m³ und kWh –
+Darunter der **Verbrauch heute** – seit Mitternacht, in Litern, m³ und kWh, daneben
+zum Einordnen der Ø Verbrauch pro Tag. Dann der **Verbrauch des laufenden Kalenderjahres** in Litern, m³ und kWh –
 drei anklickbare Felder, hinter jedem steckt eine eigene Entität mit
 Langzeitstatistik. Daneben, was das letzte Jahr bis heute verbraucht hätte (aus dessen Monatswerten, der laufende Monat anteilig):
 `erwartet bis heute 1.180 L (+6 %)`. Bewusst keine Prozentangabe „vom Jahr" –
@@ -131,6 +133,8 @@ Je Tank entsteht ein Gerät mit 18 Sensoren:
 | Umrechnungsfaktor | L/m³, der gerade gültige Wert – siehe unten |
 | Verbrauch seit Betankung | Liter seit dem letzten Bezugspunkt |
 | Tagesverbrauch | Ø Liter pro Tag |
+| Verbrauch heute | Liter seit Mitternacht – siehe unten |
+| Verbrauch heute (m³) / (kWh) | dasselbe in Kubikmetern und Kilowattstunden |
 | Verbrauch dieses Jahr | Liter im laufenden Kalenderjahr – siehe unten |
 | Verbrauch dieses Jahr (m³) | dasselbe in Kubikmetern |
 | Verbrauch dieses Jahr (kWh) | dasselbe in Kilowattstunden |
@@ -164,6 +168,17 @@ Attribute am Liter-Sensor:
 Die drei Sensoren tragen `state_class: total` und melden den 1. Januar als
 `last_reset`. Home Assistant muss den Jahreswechsel damit nicht aus einem
 Rückgang erraten – siehe [KONZEPT](docs/KONZEPT.md#jahreszähler-die-auf-0-zurückfallen).
+
+### Verbrauch heute
+
+Genauso gebaut wie der Jahresverbrauch: drei Entitäten mit `state_class: total`
+und Mitternacht als `last_reset`, gerechnet als Differenz zur Statistiksumme
+um 00:00 Uhr Ortszeit. Das kostet **eine Datenbankabfrage am Tag**.
+
+Der Bezugspunkt kommt aus der Fünfminutenstatistik – die Stundenzeile bis
+Mitternacht wäre erst eine Stunde später fertig. In den ersten gut zehn
+Minuten nach Mitternacht sind die Werte deshalb kurz „unbekannt“ und der
+Block auf der Karte ausgeblendet; danach geht es bei 0 los.
 
 ### Umrechnungsfaktor
 

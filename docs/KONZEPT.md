@@ -134,6 +134,7 @@ Recorder-Datenbank, ändert kein Schema, räumt nichts auf. Ihr eigener Zustand
 | `statistics_during_period`, Preisverlauf | 1× täglich, im Hintergrund | bis 6 Jahre, ein Sensor |
 | `async_list_statistic_ids`, Einheiten | alle 12 h, dazu 1× täglich für den Preis-Sensor | Metadatentabelle, wenige Zeilen |
 | `statistics_during_period`, Bezugspunkt Jahresanfang | 1× im Jahr | 36-Stunden-Fenster, Stundenwerte |
+| `statistics_during_period`, Bezugspunkt Mitternacht | 1× am Tag | ab 18 Uhr des Vortags, Fünfminutenwerte |
 | `statistics_during_period`, Stundenwerte | nur als Notnagel | siehe unten |
 
 ### Die kleine Abfrage: alle 15 Minuten, oft gar nicht

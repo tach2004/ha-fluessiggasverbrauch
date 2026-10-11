@@ -530,3 +530,45 @@ if __name__ == "__main__":
                 print(f"  FEHLER {name}: {e}")
     print("\nAlle Tests bestanden." if not fehler else f"\n{fehler} Test(s) fehlgeschlagen.")
     sys.exit(1 if fehler else 0)
+
+
+def test_tageswerte_sind_zaehler_mit_mitternacht_als_nullpunkt():
+    """Wie die Jahreswerte, nur mit Mitternacht als last_reset."""
+    sensor = _quelltext("sensor.py")
+    for schluessel in ("heute_liter", "heute_kubik", "heute_energie"):
+        anfang = sensor.index(f'key="{schluessel}"')
+        block = sensor[anfang:]
+        block = block[: block.index("TankSensorDescription(", 10)]
+        assert "SensorStateClass.TOTAL," in block, schluessel
+        assert "last_reset_fn=lambda s, c: s.day_start" in block, schluessel
+        assert "device_class=" in block, schluessel
+
+    # Jede Entität braucht Namen und Symbol
+    for datei in ("strings.json", "translations/de.json", "translations/en.json", "icons.json"):
+        daten = json.loads((INTEGRATION / datei).read_text(encoding="utf-8"))
+        for schluessel in ("heute_liter", "heute_kubik", "heute_energie"):
+            assert schluessel in daten["entity"]["sensor"], (datei, schluessel)
+
+
+def test_tagesbezugspunkt_kostet_eine_abfrage_am_tag():
+    koordinator = _quelltext("coordinator.py")
+    pfad = koordinator[koordinator.index("async def _async_day_start_sums"):]
+    pfad = pfad[: pfad.index("    def _day_liters")]
+    assert "if self._day_for == heute:" in pfad      # einmal am Tag, dann gemerkt
+    assert "DAY_RETRY" in pfad                       # Fehlversuch nicht bei jedem Lauf
+    assert "DAY_SETTLE" in pfad                      # Mitternachtszeile abwarten
+    # Fünfminutenstatistik: die Stundenzeile bis Mitternacht käme zu spät
+    assert '"5minute"' in pfad
+    assert "stand_um(" in pfad                       # die einzeln getestete Auswahl
+    # Mitternacht in Ortszeit, nicht UTC
+    assert "dt_util.start_of_local_day()" in koordinator
+
+
+def test_karte_zeigt_heute_ueber_dem_jahr():
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    for kennung in ("heute_liter", "heute_kubik", "heute_energie"):
+        assert f'kennung: "{kennung}"' in karte, kennung
+        assert f'"{kennung}"' in karte[: karte.index("const MODI")], kennung   # KENNUNGEN
+    assert karte.index('id="heuteblock"') < karte.index('id="jahrblock"')
+    assert "this._heuteZeichnen();" in karte
+    assert "heute: true," in karte                   # abschaltbar wie der Jahresblock

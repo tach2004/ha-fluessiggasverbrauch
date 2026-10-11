@@ -33,6 +33,7 @@ const LPG_VERSION = new URL(import.meta.url).searchParams.get("v") || "unbekannt
 const KENNUNGEN = [
   "inhalt", "inhalt_prozent", "inhalt_nutzbar", "restenergie", "restwert",
   "gaspreis", "umrechnungsfaktor", "verbrauch_seit_betankung", "tagesverbrauch",
+  "heute_liter", "heute_kubik", "heute_energie",
   "jahr_liter", "jahr_kubik", "jahr_energie", "jahresverbrauch",
   "reichweite", "leer_am", "reserve_am", "bestellen_bis", "letzte_betankung",
 ];
@@ -47,6 +48,7 @@ const DEFAULTS = {
   betankung: true,    // Betankungsformular anbieten
   verlauf: true,      // Restverlauf der kommenden Monate zeichnen
   preisverlauf: true, // Preisentwicklung der eingetragenen Lieferungen
+  heute: true,        // Verbrauch seit Mitternacht in drei Einheiten
   jahr: true,         // Verbrauch des laufenden Kalenderjahres in drei Einheiten
   wellen: true,       // Wellenanimation
 };
@@ -444,6 +446,14 @@ class LpgTankCard extends HTMLElement {
         <svg id="verlauf" viewBox="0 0 420 96" role="img" aria-label="Restverlauf"></svg>
         <div class="kacheln" id="kacheln"></div>
 
+        <div id="heuteblock" hidden>
+          <div class="abschnitt">
+            <span>Verbrauch heute</span>
+            <span id="heute-zusatz"></span>
+          </div>
+          <div class="jahr" id="heute"></div>
+        </div>
+
         <div id="jahrblock" hidden>
           <div class="abschnitt">
             <span id="jahr-titel">Verbrauch</span>
@@ -545,6 +555,7 @@ class LpgTankCard extends HTMLElement {
     ["titel", "fehler", "grafik", "liquid", "w1", "w2", "t-prozent", "t-liter", "verlauf",
      "marke-max", "marke-max-text", "marke-reserve", "marke-reserve-text",
      "kacheln", "fuss", "formular", "knopf-form", "preisblock", "preise", "preis-spanne",
+     "heuteblock", "heute", "heute-zusatz",
      "jahrblock", "jahr", "jahr-titel", "jahr-zusatz",
      "m-liefermenge", "m-tankuhr", "m-nachtragen", "m-verlauf",
      "block-liefermenge", "block-tankuhr", "block-nachtragen", "block-verlauf",
@@ -887,6 +898,7 @@ class LpgTankCard extends HTMLElement {
     ];
 
     this._kachelnZeichnen(e.kacheln, kacheln);
+    this._heuteZeichnen();
     this._jahrZeichnen();
 
     // ---------------------------------------------------------- Fußzeile
@@ -947,6 +959,33 @@ class LpgTankCard extends HTMLElement {
     // Liter daneben, und das fällt beim Vergleich mit der Literzahl auf.
     return `erw. ${this._fmt(liter, 0, "L")}` +
       (kubik != null ? ` · ${this._fmt(kubik, 1, "m³")}` : "") + "/Jahr";
+  }
+
+  /**
+   * Verbrauch seit Mitternacht in Liter, m³ und kWh - aufgebaut wie der
+   * Jahresblock darunter, mit eigenen Entitäten und Langzeitstatistik.
+   */
+  _heuteZeichnen() {
+    const e = this._el;
+    if (!e.heuteblock) return;
+    const liter = this._zustand("heute_liter");
+    if (!this._config.heute || !istWert(liter)) { e.heuteblock.hidden = true; return; }
+    e.heuteblock.hidden = false;
+
+    // Gegenüberstellung mit dem Durchschnitt seit der Betankung: Ein Tag
+    // allein sagt wenig, ob er viel oder wenig war, schon.
+    const schnitt = zahl(this._zustand("tagesverbrauch"), null);
+    e["heute-zusatz"].textContent = schnitt !== null
+      ? `Ø ${this._fmt(schnitt, 1, "L")} pro Tag` : "";
+
+    this._kachelnZeichnen(e.heute, [
+      { label: "Liter", wert: this._fmt(zahl(liter, null), 1, "L"),
+        zusatz: null, kennung: "heute_liter" },
+      { label: "Kubik", wert: this._fmt(zahl(this._zustand("heute_kubik"), null), 2, "m³"),
+        zusatz: null, kennung: "heute_kubik" },
+      { label: "Energie", wert: this._fmt(zahl(this._zustand("heute_energie"), null), 1, "kWh"),
+        zusatz: null, kennung: "heute_energie" },
+    ]);
   }
 
   /**
