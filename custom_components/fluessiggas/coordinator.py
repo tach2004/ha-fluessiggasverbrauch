@@ -76,7 +76,7 @@ from .const import (
     UNIT_M3,
 )
 from .forecast import Forecast, Profile, build_profile, expected_to_date, simulate
-from .history import KeinTreffer, ohne, waehle_eintraege
+from .history import KeinTreffer, Mischpreis, mischpreis, ohne, waehle_eintraege
 from .statistik import stand_um
 from .units import normalisiere, price_factor
 
@@ -142,6 +142,10 @@ class TankState:
     energy_kwh: float = 0.0
     value_eur: float = 0.0
     price: float = 0.0
+    #: Gewichteter Preis des Gases im Tank – siehe history.mischpreis. Ohne
+    #: eine Lieferung mit Preis ist es der eingestellte Gaspreis.
+    mix_price: float = 0.0
+    mix: Mischpreis | None = None
     consumed_liters: float = 0.0
     consumed_units: float = 0.0
     per_day: float | None = None
@@ -1028,6 +1032,9 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             self._profile = build_profile({}, self.profile_years, dt_util.now().date())
         self._profil_anfordern()
 
+        misch = mischpreis(self.deliveries, self.usable_capacity)
+        mischpreis_l = misch.preis if misch else self.price
+
         referenz_zeit = self._reference_at()
         tage = (
             max((dt_util.utcnow() - referenz_zeit).total_seconds() / 86400, 0.0)
@@ -1041,8 +1048,12 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
             usable_percent=round(stand / max(self.usable_capacity, 1) * 100, 1),
             usable_capacity=round(self.usable_capacity, 1),
             energy_kwh=round(stand * self.kwh_per_liter),
-            value_eur=round(stand * self.price, 2),
+            # Was das Gas im Tank gekostet hat, nicht was die letzte Lieferung
+            # kostete: Der Rest der vorigen Füllung steckt ja noch mit drin.
+            value_eur=round(stand * mischpreis_l, 2),
             price=round(self.price, 4),
+            mix_price=round(mischpreis_l, 4),
+            mix=misch,
             consumed_liters=round(verbrauch_liter, 1),
             consumed_units=round(verbrauch_einheiten, 3),
             per_day=round(verbrauch_liter / tage, 2) if tage >= 1 else None,

@@ -100,13 +100,13 @@ Im Preisdiagramm trägt jede Betankung ihr Datum an der Achse, und ein Zeiger
 darüber – Maus oder Finger – blendet ein Fadenkreuz mit Datum, Preis und
 Liefermenge ein, wie in den Verlaufsdiagrammen von Home Assistant.
 
-Die Karte zeigt sechs Kennzahlen unter dem Tank – Restenergie, Ø Verbrauch,
-Verbrauch seit der Betankung, **Reserve erreicht**, voraussichtlich leer und
-Bestellfrist. Beim Ø Verbrauch steht der erwartete Jahresverbrauch in Litern
-*und* Kubikmetern.
+Die Karte zeigt sechs Kennzahlen unter dem Tank – Restenergie, **Gaspreis im
+Tank**, Verbrauch seit der Betankung, **Reserve erreicht**, voraussichtlich leer
+und Bestellfrist. Beim Gaspreis im Tank steht der erwartete Jahresverbrauch in
+Litern *und* Kubikmetern, darunter was er voraussichtlich kostet.
 
 Darunter der **Verbrauch heute** – seit Mitternacht, in Litern, m³ und kWh, daneben
-zum Einordnen der Ø Verbrauch pro Tag. Dann der **Verbrauch des laufenden Kalenderjahres** in Litern, m³ und kWh –
+was er gekostet hat. Dann der **Verbrauch des laufenden Kalenderjahres** in Litern, m³ und kWh –
 drei anklickbare Felder, hinter jedem steckt eine eigene Entität mit
 Langzeitstatistik. Daneben, was das letzte Jahr bis heute verbraucht hätte (aus dessen Monatswerten, der laufende Monat anteilig):
 `erwartet bis heute 1.180 L (+6 %)`. Bewusst keine Prozentangabe „vom Jahr" –
@@ -128,8 +128,9 @@ Je Tank entsteht ein Gerät mit 18 Sensoren:
 | Füllstand | Liter im Tank |
 | Tankuhr | % vom Nennvolumen – wie die mechanische Anzeige |
 | Füllung | % der nutzbaren Menge, 100 % = randvoll getankt |
-| Restenergie / Restwert | kWh und EUR |
-| Gaspreis | EUR/L, mit Langzeitstatistik – daraus wird der Preisverlauf |
+| Restenergie / Restwert | kWh und EUR – der Restwert mit dem Gaspreis im Tank |
+| Gaspreis | EUR/L der letzten Lieferung (oder deines Helfers), mit Langzeitstatistik – daraus wird der Preisverlauf |
+| Gaspreis im Tank | EUR/L, gewichtet über die Lieferungen – siehe unten |
 | Umrechnungsfaktor | L/m³, der gerade gültige Wert – siehe unten |
 | Verbrauch seit Betankung | Liter seit dem letzten Bezugspunkt |
 | Tagesverbrauch | Ø Liter pro Tag, Attribut `heute_liter` mit dem Verbrauch seit Mitternacht |
@@ -295,6 +296,35 @@ Jede Lieferung landet mit Datum, Menge, Preis und Kosten in der Historie – und
 zwar als **fester Schnappschuss**: Der Preis einer vergangenen Lieferung ändert
 sich nie mehr, auch wenn der aktuelle Gaspreis später steigt oder fällt. Genau
 das macht die Preisentwicklung in der Karte aussagekräftig.
+
+### Gaspreis im Tank
+
+Flüssiggas mischt sich im Tank. Tankst du 3.000 L zu 0,90 € auf 900 L Rest zu
+0,677 €, kostet jeder Liter, den du danach verheizt, weder 0,677 € noch 0,90 €,
+sondern den Mischpreis:
+
+> (900 × 0,677 + 3.000 × 0,90) ÷ 3.900 = **0,849 €/L**
+
+Das rechnet die Integration bei jeder Betankung so weiter. Der Verbrauch
+zwischen zwei Betankungen ändert daran nichts – er nimmt von allem gleich viel
+weg. Die Zeit spielt nur über den Rest im Tank hinein.
+
+Gerechnet wird über die **ganze Lieferhistorie**. Ältere Lieferungen verlieren
+mit jeder Betankung von selbst ihren Anteil; nach drei, vier Füllungen steckt
+von ihnen kaum noch etwas im Tank. Eine feste Grenze („nur die letzten zwei")
+wäre falsch, wenn der Tank beim Nachtanken noch halb voll war.
+
+| Attribut | Bedeutung |
+|---|---|
+| `anteile` | je Lieferung ihr Anteil am Tankinhalt, jüngste zuerst |
+| `stand_angenommen` | nachgetragene Lieferungen ohne „Stand vorher“ – dort wird angenommen, dass auf die nutzbare Menge (85 %) aufgefüllt wurde. Ist das immer so gewesen, ist die Rechnung exakt |
+| `menge_angenommen` | nachgetragene Lieferungen nur mit Preis – sie zählen mit der üblichen Menge (Median der übrigen) |
+| `preis_pro_m3` / `preis_pro_kwh` | derselbe Preis in anderen Einheiten |
+
+Lieferungen ohne Preis ändern die Mischung nicht. Gibt es noch gar keine
+Lieferung mit Preis, ist der Gaspreis im Tank der eingestellte Gaspreis.
+Restwert, erwartete Jahreskosten und die Kosten von heute rechnen mit diesem
+Preis; in der Fußzeile steht weiterhin der Preis der letzten Lieferung.
 
 ### Preisverlauf aus vorhandener Statistik
 

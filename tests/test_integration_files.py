@@ -576,3 +576,30 @@ def test_karte_zeigt_heute_ueber_dem_jahr():
     assert "liter / faktor" in funktion
     assert "kwh_pro_liter" in funktion
     assert "3.92" not in funktion and "3,92" not in funktion
+
+
+def test_gaspreis_im_tank_ersetzt_den_durchschnitt():
+    """Die Kachel zeigt den Mischpreis; Restwert und erwartete Jahreskosten
+    rechnen damit, nicht mit dem Preis der letzten Lieferung."""
+    koordinator = _quelltext("coordinator.py")
+    assert "value_eur=round(stand * mischpreis_l, 2)" in koordinator
+    assert "mischpreis(self.deliveries, self.usable_capacity)" in koordinator
+
+    sensor = _quelltext("sensor.py")
+    assert 'key="gaspreis_tank"' in sensor
+    assert "s.profile.annual * c.correction * s.mix_price" in sensor
+    for datei in ("strings.json", "translations/de.json", "translations/en.json", "icons.json"):
+        daten = json.loads((INTEGRATION / datei).read_text(encoding="utf-8"))
+        assert "gaspreis_tank" in daten["entity"]["sensor"], datei
+
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    code = re.sub(r"//[^\n]*|/\*.*?\*/", "", karte, flags=re.S)
+    assert '"gaspreis_tank"' in code[: code.index("const MODI")]       # KENNUNGEN
+    assert 'label: "Gaspreis im Tank"' in code
+    assert 'label: "Ø Verbrauch"' not in code
+    assert "attr.kosten_eur" in code                 # B: erwartete Jahreskosten
+    heute = code[code.index("_heuteZeichnen() {"):]
+    heute = heute[: heute.index("\n  }\n")]
+    assert "liter * mischpreis" in heute              # Kosten des heutigen Tages
+    # Kein zweiter "Gaspreis" in der Fußzeile
+    assert "`Gaspreis: " not in code

@@ -586,6 +586,50 @@ Die Karte selbst zeichnet allerdings nicht diesen Sensor, sondern die
 die Frage „gut oder schlecht eingekauft" beantwortet – der laufende Marktpreis
 zwischen zwei Lieferungen ist dafür Rauschen.
 
+## Gaspreis im Tank: gewichtet, nicht zuletzt bezahlt
+
+Was kostet ein Liter, den die Heizung gerade verbrennt? Nicht der Preis der
+letzten Lieferung – im Tank steckt noch der Rest der vorigen Füllung, und der
+mischt sich. Flüssiggas ist eine Flüssigkeit in einem Behälter; es gibt kein
+„zuerst rein, zuerst raus“.
+
+Bei jeder Betankung wird deshalb gemischt:
+
+    Anteil des Alten  = Rest / (Rest + getankte Liter)
+    Anteil des Neuen  = getankte Liter / (Rest + getankte Liter)
+
+Alle früheren Anteile schrumpfen mit dem Faktor des Alten. Zwischen zwei
+Betankungen bleibt der Preis stehen, denn der Verbrauch nimmt von allem
+gleich viel weg. Zeitliche Abstände brauchen keine eigene Gewichtung – wer
+länger wartet, hat beim Nachtanken weniger Rest, und genau das steckt schon im
+Anteil.
+
+**Wie weit zurück?** Über alles, was in der Historie steht. Ein Beispiel mit
+typischen Mengen (1.000 L Rest, 3.000 L Lieferung): Jede Betankung lässt vom
+Bisherigen ein Viertel übrig. Nach drei Füllungen sind es 1,6 %, nach fünf
+0,1 %. Alte Lieferungen verschwinden also von selbst, ohne dass eine Grenze
+nötig wäre. Eine feste Grenze wäre sogar falsch: Wurde bei halbvollem Tank
+nachgetankt, steckt die vorletzte Füllung noch zur Hälfte drin.
+
+Gerechnet wird bei jedem Durchlauf neu aus der Historie, nicht fortgeschrieben.
+Löschst oder korrigierst du eine Lieferung, stimmt der Preis sofort wieder.
+
+Lücken in den Daten:
+
+* **Nachgetragene Lieferungen** haben keinen „Stand vorher“. Angenommen wird,
+  dass auf die nutzbare Menge aufgefüllt wurde – so liefern die Lieferanten.
+  Wurde tatsächlich immer auf 85 % gefüllt, ist das gar keine Annahme mehr:
+  Der Stand vorher ist dann genau nutzbare Menge minus Liefermenge. Und wo es
+  nicht ganz stimmt, wird der Fehler mit jeder späteren Betankung kleiner, wie
+  jeder andere alte Anteil auch.
+* **Lieferungen nur mit Preis** (die Menge ist beim Nachtragen optional)
+  zählen mit der üblichen Menge, dem Median der übrigen Lieferungen. Ganz
+  übergehen hieße, ihren Preis zu verschweigen.
+* **Lieferungen ohne Preis** ändern die Mischung nicht: Über das neue Gas ist
+  nichts bekannt.
+* **Vor der ersten Lieferung mit Preis** ist der Inhalt unbekannt und zählt zu
+  deren Preis.
+
 ## Selbstkalibrierung
 
 Ob die m³ deiner Heizung wirklich 3,92 L Flüssiggas entsprechen, weiß niemand
