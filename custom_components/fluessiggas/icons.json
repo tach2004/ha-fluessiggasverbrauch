@@ -25,6 +25,9 @@
       "gaspreis": {
         "default": "mdi:currency-eur"
       },
+      "gaspreis_tank": {
+        "default": "mdi:cash-multiple"
+      },
       "umrechnungsfaktor": {
         "default": "mdi:swap-horizontal"
       },

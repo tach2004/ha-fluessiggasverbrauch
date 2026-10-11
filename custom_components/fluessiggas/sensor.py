@@ -112,6 +112,24 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         },
     ),
     TankSensorDescription(
+        key="gaspreis_tank",
+        translation_key="gaspreis_tank",
+        native_unit_of_measurement="EUR/L",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+        value_fn=lambda s, c: s.mix_price,
+        attrs_fn=lambda s, c: {
+            "quelle": "lieferungen" if s.mix else "gaspreis",
+            "preis_pro_m3": round(s.mix_price * c.liter_per_m3, 4),
+            "preis_pro_kwh": round(s.mix_price / max(c.kwh_per_liter, 0.1), 4),
+            # Woraus sich der Preis zusammensetzt, jüngste Lieferung zuerst
+            "anteile": s.mix.anteile if s.mix else [],
+            # Nachgetragene Lieferungen ohne "Stand vorher": dort wurde
+            # angenommen, dass auf die nutzbare Menge aufgefüllt wurde
+            "stand_angenommen": s.mix.angenommen if s.mix else [],
+        },
+    ),
+    TankSensorDescription(
         key="umrechnungsfaktor",
         translation_key="umrechnungsfaktor",
         native_unit_of_measurement="L/m³",
@@ -299,7 +317,9 @@ def _profil_attribute(s: TankState, c: TankCoordinator) -> dict[str, Any]:
         "gemessene_monate": s.profile.measured_months,
         "kubikmeter": round(s.profile.annual * c.correction / max(c.liter_per_m3, 0.1), 1),
         "energie_kwh": round(s.profile.annual * c.correction * c.kwh_per_liter),
-        "kosten_eur": round(s.profile.annual * c.correction * c.price),
+        # Mit dem Mischpreis: So viel kostet das Gas, das als Nächstes
+        # verheizt wird – nicht das der letzten Lieferung allein.
+        "kosten_eur": round(s.profile.annual * c.correction * s.mix_price),
     }
 
 

@@ -32,7 +32,7 @@ const LPG_VERSION = new URL(import.meta.url).searchParams.get("v") || "unbekannt
 /** Kennungen, die die Integration an ihren Entitäten hinterlässt. */
 const KENNUNGEN = [
   "inhalt", "inhalt_prozent", "inhalt_nutzbar", "restenergie", "restwert",
-  "gaspreis", "umrechnungsfaktor", "verbrauch_seit_betankung", "tagesverbrauch",
+  "gaspreis", "gaspreis_tank", "umrechnungsfaktor", "verbrauch_seit_betankung", "tagesverbrauch",
   "jahr_liter", "jahr_kubik", "jahr_energie", "jahresverbrauch",
   "reichweite", "leer_am", "reserve_am", "bestellen_bis", "letzte_betankung",
 ];
@@ -867,7 +867,7 @@ class LpgTankCard extends HTMLElement {
     const leerAm = this._datum("leer_am");
     const bestellen = this._datum("bestellen_bis");
     const wert = zahl(this._zustand("restwert"), null);
-    const proTag = zahl(this._zustand("tagesverbrauch"), null);
+    const mischpreis = zahl(this._zustand("gaspreis_tank"), null);
 
     const reserveAm = this._datum("reserve_am");
     const jahr = zahl(this._zustand("jahresverbrauch"), null);
@@ -877,10 +877,12 @@ class LpgTankCard extends HTMLElement {
     const kacheln = [
       { label: "Restenergie", wert: this._fmt(energie, 0, "kWh"),
         zusatz: wert !== null ? this._fmt(wert, 0, "EUR") : "", kennung: "restenergie" },
-      { label: "Ø Verbrauch", wert: this._fmt(proTag, 1, "L/d"),
-        zusatz: jahr !== null ? this._erwartet(jahr)
-          : (proTag !== null ? this._fmt(proTag * 30, 0, "L/Monat") : ""),
-        kennung: jahr !== null ? "jahresverbrauch" : "tagesverbrauch" },
+      // Hier stand früher der Ø Verbrauch seit der Betankung. Der hing vor
+      // allem daran, wann getankt wurde, und mischte Sommer und Winter. Der
+      // Mischpreis sagt mehr: was das Gas im Tank wirklich gekostet hat.
+      { label: "Gaspreis im Tank", wert: this._fmt(mischpreis, 3, "EUR/L"),
+        zusatz: jahr !== null ? this._erwartet(jahr) : "",
+        kennung: "gaspreis_tank" },
       // Eine Kachel "Reichweite" gab es hier auch mal. Die Tage stehen aber
       // schon unter "Reserve erreicht" und "Voraussichtlich leer" - der
       // Platz gehört jetzt dem Verbrauch seit der Betankung, der sonst
@@ -908,8 +910,15 @@ class LpgTankCard extends HTMLElement {
       teile.push(`Letzte Betankung: ${this._datumText(this._parse(letzte.state))}` +
         (menge ? ` (${this._fmt(menge, 0, "L")})` : ""));
     }
-    const preis = zahl(this._zustand("gaspreis"), null);
-    if (preis !== null) teile.push(`Gaspreis: ${this._fmt(preis, 3, "EUR/L")}`);
+    // Der Preis der letzten Lieferung (oder des eigenen Preis-Helfers) -
+    // bewusst anders beschriftet als der Mischpreis in der Kachel, sonst
+    // stünden zwei verschiedene "Gaspreise" auf der Karte.
+    const gaspreis = this._zustand("gaspreis");
+    const preis = zahl(gaspreis, null);
+    if (preis !== null) {
+      const helfer = ((gaspreis.attributes || {}).quelle || "integration") !== "integration";
+      teile.push(`${helfer ? "Aktueller Preis" : "Lieferpreis"}: ${this._fmt(preis, 3, "EUR/L")}`);
+    }
 
     // Der Umrechnungsfaktor nur dort, wo er etwas bedeutet: Bei kWh- oder
     // Liter-Zählern wird gar nicht über m³ gerechnet.
@@ -946,9 +955,9 @@ class LpgTankCard extends HTMLElement {
   }
 
   /**
-   * Der erwartete Jahresverbrauch in Litern und Kubikmetern. Die m³ kommen
-   * fertig aus der Integration, damit die Karte den Faktor nicht selbst
-   * anwenden muss - der kalibriert sich schließlich nach.
+   * Der erwartete Jahresverbrauch in Litern, Kubikmetern und Euro. m³ und
+   * Kosten kommen fertig aus der Integration, damit die Karte weder den
+   * Faktor (der kalibriert sich nach) noch den Mischpreis selbst rechnet.
    */
   _erwartet(liter) {
     const attr = (this._zustand("jahresverbrauch") || {}).attributes || {};
@@ -956,8 +965,12 @@ class LpgTankCard extends HTMLElement {
     // Eine Nachkommastelle bei den m³: Ein ganzer Kubikmeter sind rund
     // 3,9 Liter - auf ganze m³ gerundet wäre die Anzeige um bis zu zwei
     // Liter daneben, und das fällt beim Vergleich mit der Literzahl auf.
+    // Die Kosten in eine eigene Zeile: angehängt brach das "≈" in einer
+    // halben Spalte allein ans Zeilenende.
     return `erw. ${this._fmt(liter, 0, "L")}` +
-      (kubik != null ? ` · ${this._fmt(kubik, 1, "m³")}` : "") + "/Jahr";
+      (kubik != null ? ` · ${this._fmt(kubik, 1, "m³")}` : "") + "/Jahr" +
+      (attr.kosten_eur != null
+        ? `<br>≈&nbsp;${this._fmt(attr.kosten_eur, 0, "EUR")}/Jahr` : "");
   }
 
   /**
@@ -975,11 +988,11 @@ class LpgTankCard extends HTMLElement {
     }
     e.heuteblock.hidden = false;
 
-    // Gegenüberstellung mit dem Durchschnitt seit der Betankung: Ein Tag
-    // allein sagt wenig, ob er viel oder wenig war, schon.
-    const proTag = zahl(schnitt, null);
-    e["heute-zusatz"].textContent = proTag !== null
-      ? `Ø ${this._fmt(proTag, 1, "L")} pro Tag` : "";
+    // Was der heutige Tag gekostet hat - mit dem Mischpreis, also dem, was
+    // das verheizte Gas tatsächlich gekostet hat.
+    const mischpreis = zahl(this._zustand("gaspreis_tank"), null);
+    e["heute-zusatz"].textContent = mischpreis !== null
+      ? `≈\u00a0${this._fmt(liter * mischpreis, 2, "EUR")}` : "";
 
     // Umgerechnet mit dem gerade gültigen Faktor - derselbe, mit dem die
     // Integration aus den m³ der Heizung Liter macht. Nach einer Betankung

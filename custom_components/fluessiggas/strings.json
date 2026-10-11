@@ -160,6 +160,9 @@
       "gaspreis": {
         "name": "Gas price"
       },
+      "gaspreis_tank": {
+        "name": "Gas price in tank"
+      },
       "umrechnungsfaktor": {
         "name": "Conversion factor"
       }
