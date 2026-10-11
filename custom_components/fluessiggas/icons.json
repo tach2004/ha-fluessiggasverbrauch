@@ -43,15 +43,6 @@
       "jahr_energie": {
         "default": "mdi:lightning-bolt-outline"
       },
-      "heute_liter": {
-        "default": "mdi:calendar-today"
-      },
-      "heute_kubik": {
-        "default": "mdi:cube-outline"
-      },
-      "heute_energie": {
-        "default": "mdi:lightning-bolt-outline"
-      },
       "jahresverbrauch": {
         "default": "mdi:calendar-range"
       },

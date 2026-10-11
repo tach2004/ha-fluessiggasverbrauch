@@ -132,9 +132,7 @@ Je Tank entsteht ein Gerät mit 18 Sensoren:
 | Gaspreis | EUR/L, mit Langzeitstatistik – daraus wird der Preisverlauf |
 | Umrechnungsfaktor | L/m³, der gerade gültige Wert – siehe unten |
 | Verbrauch seit Betankung | Liter seit dem letzten Bezugspunkt |
-| Tagesverbrauch | Ø Liter pro Tag |
-| Verbrauch heute | Liter seit Mitternacht – siehe unten |
-| Verbrauch heute (m³) / (kWh) | dasselbe in Kubikmetern und Kilowattstunden |
+| Tagesverbrauch | Ø Liter pro Tag, Attribut `heute_liter` mit dem Verbrauch seit Mitternacht |
 | Verbrauch dieses Jahr | Liter im laufenden Kalenderjahr – siehe unten |
 | Verbrauch dieses Jahr (m³) | dasselbe in Kubikmetern |
 | Verbrauch dieses Jahr (kWh) | dasselbe in Kilowattstunden |
@@ -171,14 +169,17 @@ Rückgang erraten – siehe [KONZEPT](docs/KONZEPT.md#jahreszähler-die-auf-0-zu
 
 ### Verbrauch heute
 
-Genauso gebaut wie der Jahresverbrauch: drei Entitäten mit `state_class: total`
-und Mitternacht als `last_reset`, gerechnet als Differenz zur Statistiksumme
-um 00:00 Uhr Ortszeit. Das kostet **eine Datenbankabfrage am Tag**.
+Keine eigene Entität: Die Liter seit Mitternacht stehen als Attribut
+`heute_liter` am Sensor *Tagesverbrauch*. m³ und kWh rechnet die Karte daraus
+mit dem gerade gültigen Umrechnungsfaktor und dem Energieinhalt je Liter – nach
+einer Betankung mit Nachkalibrierung gilt also sofort der neue Faktor. Den
+Tagesverlauf selbst führen ohnehin schon die Gaszähler deiner Heizung.
 
-Der Bezugspunkt kommt aus der Fünfminutenstatistik – die Stundenzeile bis
-Mitternacht wäre erst eine Stunde später fertig. In den ersten gut zehn
-Minuten nach Mitternacht sind die Werte deshalb kurz „unbekannt“ und der
-Block auf der Karte ausgeblendet; danach geht es bei 0 los.
+Gerechnet wird wie beim Jahr als Differenz zur Statistiksumme um 00:00 Uhr
+Ortszeit; das kostet **eine Datenbankabfrage am Tag**. Der Bezugspunkt kommt
+aus der Fünfminutenstatistik – die Stundenzeile bis Mitternacht wäre erst eine
+Stunde später fertig. In den ersten gut zehn Minuten nach Mitternacht ist der
+Block auf der Karte deshalb kurz ausgeblendet; danach geht es bei 0 los.
 
 ### Umrechnungsfaktor
 

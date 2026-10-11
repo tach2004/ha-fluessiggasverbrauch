@@ -532,22 +532,19 @@ if __name__ == "__main__":
     sys.exit(1 if fehler else 0)
 
 
-def test_tageswerte_sind_zaehler_mit_mitternacht_als_nullpunkt():
-    """Wie die Jahreswerte, nur mit Mitternacht als last_reset."""
+def test_heute_ist_ein_attribut_und_keine_eigene_entitaet():
+    """Der Tageswert hängt am Tagesverbrauch – die Gaszähler der Heizung
+    führen den Tagesverlauf ohnehin, drei weitere Entitäten wären doppelt."""
     sensor = _quelltext("sensor.py")
     for schluessel in ("heute_liter", "heute_kubik", "heute_energie"):
-        anfang = sensor.index(f'key="{schluessel}"')
-        block = sensor[anfang:]
-        block = block[: block.index("TankSensorDescription(", 10)]
-        assert "SensorStateClass.TOTAL," in block, schluessel
-        assert "last_reset_fn=lambda s, c: s.day_start" in block, schluessel
-        assert "device_class=" in block, schluessel
+        assert f'key="{schluessel}"' not in sensor, schluessel
+    anfang = sensor.index('key="tagesverbrauch"')
+    block = sensor[anfang:]
+    block = block[: block.index("TankSensorDescription(", 10)]
+    assert '"heute_liter": round(s.day_liters, 2)' in block
 
-    # Jede Entität braucht Namen und Symbol
-    for datei in ("strings.json", "translations/de.json", "translations/en.json", "icons.json"):
-        daten = json.loads((INTEGRATION / datei).read_text(encoding="utf-8"))
-        for schluessel in ("heute_liter", "heute_kubik", "heute_energie"):
-            assert schluessel in daten["entity"]["sensor"], (datei, schluessel)
+    # Die Karte braucht für die Umrechnung den kWh-Wert am Faktor-Sensor
+    assert '"kwh_pro_liter": round(c.kwh_per_liter, 2)' in sensor
 
 
 def test_tagesbezugspunkt_kostet_eine_abfrage_am_tag():
@@ -566,9 +563,16 @@ def test_tagesbezugspunkt_kostet_eine_abfrage_am_tag():
 
 def test_karte_zeigt_heute_ueber_dem_jahr():
     karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
-    for kennung in ("heute_liter", "heute_kubik", "heute_energie"):
-        assert f'kennung: "{kennung}"' in karte, kennung
-        assert f'"{kennung}"' in karte[: karte.index("const MODI")], kennung   # KENNUNGEN
+    code = re.sub(r"//[^\n]*|/\*.*?\*/", "", karte, flags=re.S)
     assert karte.index('id="heuteblock"') < karte.index('id="jahrblock"')
-    assert "this._heuteZeichnen();" in karte
-    assert "heute: true," in karte                   # abschaltbar wie der Jahresblock
+    assert "this._heuteZeichnen();" in code
+    assert "heute: true," in code                    # abschaltbar wie der Jahresblock
+
+    funktion = code[code.index("_heuteZeichnen() {"):]
+    funktion = funktion[: funktion.index("\n  }\n")]
+    assert ".heute_liter" in funktion
+    # m³ und kWh mit dem gerade gültigen Faktor, nicht mit festen Zahlen
+    assert '_zustand("umrechnungsfaktor")' in funktion
+    assert "liter / faktor" in funktion
+    assert "kwh_pro_liter" in funktion
+    assert "3.92" not in funktion and "3,92" not in funktion

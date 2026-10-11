@@ -140,6 +140,14 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
         value_fn=lambda s, c: s.per_day,
+        # Der Verbrauch seit Mitternacht steht bewusst nur hier als Attribut
+        # und nicht als eigene Entität: Die Gaszähler der Heizung führen den
+        # Tagesverlauf ohnehin. m³ und kWh rechnet die Karte mit dem gerade
+        # gültigen Umrechnungsfaktor um.
+        attrs_fn=lambda s, c: {
+            "heute_liter": round(s.day_liters, 2) if s.day_liters is not None else None,
+            "heute_seit": dt_util.as_local(s.day_start).isoformat() if s.day_start else None,
+        },
     ),
     # Die drei Jahreswerte sind dieselbe Menge in drei Einheiten. Bewusst als
     # eigene Entitäten und nicht als Attribute: Nur so führt Home Assistant
@@ -192,49 +200,6 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
             if s.year_liters is not None else None
         ),
         last_reset_fn=lambda s, c: s.year_start,
-    ),
-    # Dasselbe für den heutigen Tag: Differenz zur Statistiksumme um
-    # Mitternacht, mit Mitternacht als last_reset.
-    TankSensorDescription(
-        key="heute_liter",
-        translation_key="heute_liter",
-        native_unit_of_measurement=UnitOfVolume.LITERS,
-        device_class=SensorDeviceClass.VOLUME,
-        state_class=SensorStateClass.TOTAL,
-        suggested_display_precision=1,
-        value_fn=lambda s, c: (
-            round(s.day_liters, 1) if s.day_liters is not None else None
-        ),
-        last_reset_fn=lambda s, c: s.day_start,
-        attrs_fn=lambda s, c: {
-            "seit": dt_util.as_local(s.day_start).isoformat() if s.day_start else None,
-        },
-    ),
-    TankSensorDescription(
-        key="heute_kubik",
-        translation_key="heute_kubik",
-        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
-        device_class=SensorDeviceClass.VOLUME,
-        state_class=SensorStateClass.TOTAL,
-        suggested_display_precision=2,
-        value_fn=lambda s, c: (
-            round(s.day_liters / max(c.liter_per_m3, 0.1), 3)
-            if s.day_liters is not None else None
-        ),
-        last_reset_fn=lambda s, c: s.day_start,
-    ),
-    TankSensorDescription(
-        key="heute_energie",
-        translation_key="heute_energie",
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
-        suggested_display_precision=1,
-        value_fn=lambda s, c: (
-            round(s.day_liters * c.kwh_per_liter, 2)
-            if s.day_liters is not None else None
-        ),
-        last_reset_fn=lambda s, c: s.day_start,
     ),
     TankSensorDescription(
         key="jahresverbrauch",
@@ -381,8 +346,8 @@ class TankSensor(CoordinatorEntity[TankCoordinator], SensorEntity):
     def last_reset(self) -> datetime | None:
         """Wann der Zähler zuletzt bei 0 stand.
 
-        Nur die Jahres- und Tageswerte haben das: Sie fallen zum Jahres-
-        bzw. Tageswechsel auf 0 zurück. Mit einem ausdrücklichen Zeitpunkt muss Home Assistant den
+        Nur die Jahreswerte haben das: Sie fallen zum Jahreswechsel auf 0
+        zurück. Mit einem ausdrücklichen Zeitpunkt muss Home Assistant den
         Rücksprung nicht aus einem Rückgang erraten – ein kleiner Rückgang
         mitten im Jahr (etwa nach einer Nachkalibrierung des Faktors) wird
         damit nicht versehentlich als Jahreswechsel gelesen.
