@@ -8,6 +8,7 @@ liegt das Stück in einem eigenen Modul und ist einzeln getestet.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from statistics import median
 from typing import Any
 
 
@@ -72,6 +73,8 @@ class Mischpreis:
     anteile: list[dict[str, Any]] = field(default_factory=list)
     #: Lieferungen, bei denen der Stand vor der Betankung angenommen wurde
     angenommen: list[str] = field(default_factory=list)
+    #: Lieferungen ohne Liefermenge, für die die übliche Menge angenommen wurde
+    menge_angenommen: list[str] = field(default_factory=list)
 
 
 def _zahl(wert: Any) -> float | None:
@@ -105,6 +108,11 @@ def mischpreis(eintraege: list[dict[str, Any]], nutzbar: float) -> Mischpreis | 
       Gas ist nichts bekannt, also wird es zum bisherigen Preis gerechnet.
     - Nachgetragene Lieferung ohne "Stand vorher": angenommen wird, dass auf
       die nutzbare Menge (85 %) aufgefüllt wurde – so liefern die Lieferanten.
+      Wurde tatsächlich immer auf 85 % gefüllt, ist das keine Schätzung: Der
+      Stand vorher ist dann genau nutzbare Menge minus Liefermenge.
+    - Lieferung mit Preis, aber ohne Liefermenge (beim Nachtragen optional):
+      Sie bekommt die übliche Menge, den Median der bekannten Lieferungen.
+      Ganz übergehen hieße, ihren Preis zu verschweigen.
     - Die erste Lieferung mit Preis setzt den Anfang; was davor im Tank war,
       ist unbekannt und zählt zu ihrem Preis.
 
@@ -115,15 +123,21 @@ def mischpreis(eintraege: list[dict[str, Any]], nutzbar: float) -> Mischpreis | 
     reihe = sorted(eintraege, key=lambda e: str(e.get("datum") or ""))
     anteile: list[tuple[dict[str, Any], float]] = []
     angenommen: list[str] = []
+    menge_angenommen: list[str] = []
+
+    bekannt = [m for e in reihe if (m := _menge(e)) is not None and m > 0]
+    uebliche_menge = median(bekannt) if bekannt else None
 
     for eintrag in reihe:
         preis = _zahl(eintrag.get("preis_pro_liter"))
         vorher = _zahl(eintrag.get("stand_vorher"))
-        nachher = _zahl(eintrag.get("stand_nachher"))
-        liter = _zahl(eintrag.get("liter"))
-        if liter is None and vorher is not None and nachher is not None:
-            liter = nachher - vorher
-        if liter is None or liter <= 0 or preis is None or preis <= 0:
+        liter = _menge(eintrag)
+        if preis is None or preis <= 0:
+            continue
+        if liter is None and uebliche_menge is not None:
+            liter = uebliche_menge
+            menge_angenommen.append(str(eintrag.get("datum")))
+        if liter is None or liter <= 0:
             continue
         if not anteile:
             anteile = [(eintrag, 1.0)]
@@ -148,4 +162,17 @@ def mischpreis(eintraege: list[dict[str, Any]], nutzbar: float) -> Mischpreis | 
             if a >= ANTEIL_ANZEIGEN_AB
         ],
         angenommen=angenommen,
+        menge_angenommen=menge_angenommen,
     )
+
+
+def _menge(eintrag: dict[str, Any]) -> float | None:
+    """Getankte Liter – angegeben oder aus den Ständen der Tankuhr."""
+    liter = _zahl(eintrag.get("liter"))
+    if liter is not None:
+        return liter
+    vorher = _zahl(eintrag.get("stand_vorher"))
+    nachher = _zahl(eintrag.get("stand_nachher"))
+    if vorher is not None and nachher is not None:
+        return nachher - vorher
+    return None

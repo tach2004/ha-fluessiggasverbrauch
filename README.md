@@ -317,7 +317,8 @@ wäre falsch, wenn der Tank beim Nachtanken noch halb voll war.
 | Attribut | Bedeutung |
 |---|---|
 | `anteile` | je Lieferung ihr Anteil am Tankinhalt, jüngste zuerst |
-| `stand_angenommen` | nachgetragene Lieferungen ohne „Stand vorher“ – dort wird angenommen, dass auf die nutzbare Menge aufgefüllt wurde |
+| `stand_angenommen` | nachgetragene Lieferungen ohne „Stand vorher“ – dort wird angenommen, dass auf die nutzbare Menge (85 %) aufgefüllt wurde. Ist das immer so gewesen, ist die Rechnung exakt |
+| `menge_angenommen` | nachgetragene Lieferungen nur mit Preis – sie zählen mit der üblichen Menge (Median der übrigen) |
 | `preis_pro_m3` / `preis_pro_kwh` | derselbe Preis in anderen Einheiten |
 
 Lieferungen ohne Preis ändern die Mischung nicht. Gibt es noch gar keine

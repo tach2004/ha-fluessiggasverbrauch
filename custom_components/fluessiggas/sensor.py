@@ -127,6 +127,8 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
             # Nachgetragene Lieferungen ohne "Stand vorher": dort wurde
             # angenommen, dass auf die nutzbare Menge aufgefüllt wurde
             "stand_angenommen": s.mix.angenommen if s.mix else [],
+            # Lieferungen ohne Liefermenge: mit der üblichen Menge gerechnet
+            "menge_angenommen": s.mix.menge_angenommen if s.mix else [],
         },
     ),
     TankSensorDescription(

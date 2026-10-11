@@ -618,8 +618,13 @@ Lücken in den Daten:
 
 * **Nachgetragene Lieferungen** haben keinen „Stand vorher“. Angenommen wird,
   dass auf die nutzbare Menge aufgefüllt wurde – so liefern die Lieferanten.
-  Der Fehler dieser Annahme wird mit jeder späteren Betankung kleiner, wie
+  Wurde tatsächlich immer auf 85 % gefüllt, ist das gar keine Annahme mehr:
+  Der Stand vorher ist dann genau nutzbare Menge minus Liefermenge. Und wo es
+  nicht ganz stimmt, wird der Fehler mit jeder späteren Betankung kleiner, wie
   jeder andere alte Anteil auch.
+* **Lieferungen nur mit Preis** (die Menge ist beim Nachtragen optional)
+  zählen mit der üblichen Menge, dem Median der übrigen Lieferungen. Ganz
+  übergehen hieße, ihren Preis zu verschweigen.
 * **Lieferungen ohne Preis** ändern die Mischung nicht: Über das neue Gas ist
   nichts bekannt.
 * **Vor der ersten Lieferung mit Preis** ist der Inhalt unbekannt und zählt zu

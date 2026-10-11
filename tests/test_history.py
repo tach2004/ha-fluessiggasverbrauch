@@ -191,6 +191,38 @@ def test_reihenfolge_nach_datum_nicht_nach_eintragung():
     assert mischpreis([b, a], NUTZBAR).preis == mischpreis([a, b], NUTZBAR).preis
 
 
+def test_immer_auf_85_prozent_gefuellt_ist_exakt():
+    """Alles nachgetragen, nur Menge und Preis bekannt – und es wurde immer
+    auf 85 % gefüllt. Dann ist der Stand vorher keine Schätzung."""
+    nachgetragen = mischpreis([
+        _lieferung("2023-01-01", 3000.0, 0.80),
+        _lieferung("2024-01-01", 2500.0, 0.60),
+        _lieferung("2025-11-07", 2131.0, 0.677),
+    ], NUTZBAR)
+    mit_staenden = mischpreis([
+        _lieferung("2023-01-01", 3000.0, 0.80),
+        _lieferung("2024-01-01", 2500.0, 0.60, vorher=NUTZBAR - 2500.0),
+        _lieferung("2025-11-07", 2131.0, 0.677, vorher=NUTZBAR - 2131.0),
+    ], NUTZBAR)
+    assert abs(nachgetragen.preis - mit_staenden.preis) < 1e-12
+
+
+def test_preis_ohne_menge_wird_nicht_verschwiegen():
+    """Beim Nachtragen ist die Menge optional. Eine Lieferung nur mit Preis
+    zählt mit der üblichen Menge (Median der bekannten)."""
+    ergebnis = mischpreis([
+        _lieferung("2023-01-01", 3000.0, 0.80),
+        _lieferung("2024-01-01", None, 1.20),
+        _lieferung("2025-01-01", 2000.0, 0.60),
+    ], NUTZBAR)
+    assert "2024-01-01" in [a["datum"] for a in ergebnis.anteile]
+    assert ergebnis.menge_angenommen == ["2024-01-01"]
+    # Median von 3.000 und 2.000 = 2.500 L zu 1,20 €
+    nach_2024 = (1623 * 0.80 + 2500 * 1.20) / NUTZBAR
+    erwartet = (2123 * nach_2024 + 2000 * 0.60) / NUTZBAR
+    assert abs(ergebnis.preis - erwartet) < 1e-9
+
+
 def test_ohne_preise_kein_mischpreis():
     assert mischpreis([], NUTZBAR) is None
     assert mischpreis([_lieferung("2025-01-01", 3000.0, None)], NUTZBAR) is None
