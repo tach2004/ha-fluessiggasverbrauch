@@ -77,6 +77,7 @@ from .const import (
 )
 from .forecast import Forecast, Profile, build_profile, expected_to_date, simulate
 from .history import KeinTreffer, ohne, waehle_eintraege
+from .statistik import stand_um
 from .units import normalisiere, price_factor
 
 _LOGGER = logging.getLogger(__name__)
@@ -102,6 +103,14 @@ STAT_LAG = timedelta(minutes=15)
 #: fehl (noch keine Statistik so weit zurück), wird es stündlich erneut
 #: versucht statt bei jedem Durchlauf.
 YEAR_RETRY = timedelta(hours=1)
+
+#: Der Bezugspunkt zum Tagesbeginn kommt aus der Fünfminutenstatistik. Die
+#: Zeile, die um Mitternacht endet, schreibt der Recorder erst kurz danach -
+#: so lange bleibt der Tagesverbrauch unbekannt, statt einen Bezugspunkt zu
+#: nehmen, der fünf Minuten Gas daneben liegt und den ganzen Tag gälte.
+DAY_SETTLE = timedelta(minutes=10)
+#: Fehlversuche beim Tagesbezugspunkt nicht bei jedem Durchlauf wiederholen
+DAY_RETRY = timedelta(minutes=10)
 
 #: Sicherheitsnetz: Auch ohne jede Zählerbewegung wird einmal pro Stunde
 #: gelesen. Fängt Fälle ab, in denen Statistik ohne Zustandsänderung entsteht
@@ -154,6 +163,11 @@ class TankState:
     year: int | None = None
     #: Was das Monatsprofil bis heute erwartet hätte – der Vergleichswert
     year_expected: float | None = None
+    #: Verbrauch seit Mitternacht (Ortszeit); None, solange der Bezugspunkt
+    #: zum Tagesbeginn nicht feststeht
+    day_liters: float | None = None
+    #: Mitternacht in Ortszeit, als UTC-Instant – last_reset der Tageswerte
+    day_start: datetime | None = None
 
 
 class TankCoordinator(DataUpdateCoordinator[TankState]):
@@ -186,6 +200,9 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         self._year_sums: dict[str, float] = {}
         self._year_for: int | None = None
         self._year_try: datetime | None = None
+        self._day_sums: dict[str, float] = {}
+        self._day_for: date | None = None
+        self._day_try: datetime | None = None
         self._profile: Profile | None = None
         # Maßstab für „erwartet bis heute": nur abgeschlossene Vorjahre
         self._profile_vergleich: Profile | None = None
@@ -619,25 +636,101 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         self, summen: dict[str, float], jahresanfang: dict[str, float] | None
     ) -> float | None:
         """Verbrauch im laufenden Kalenderjahr in Litern."""
-        if jahresanfang is None:
+        liter = self._liters_since(summen, jahresanfang, "Jahresanfang")
+        if liter is None and jahresanfang is not None:
+            # Die Statistik wurde gelöscht oder neu aufgebaut: Der gemerkte
+            # Bezugspunkt stammt aus der alten Reihe und ist damit wertlos.
+            # Neu holen (der Stundentakt von YEAR_RETRY bleibt, damit das
+            # nicht zur Endlosschleife wird).
+            self._year_for = None
+        return liter
+
+    def _liters_since(
+        self,
+        summen: dict[str, float],
+        bezug: dict[str, float] | None,
+        wann: str,
+    ) -> float | None:
+        """Liter seit einem Bezugspunkt; None, wenn er nicht (mehr) passt."""
+        if bezug is None:
             return None
         liter = 0.0
         for entity_id, wert in summen.items():
-            if (anfang := jahresanfang.get(entity_id)) is None:
+            if (anfang := bezug.get(entity_id)) is None:
                 return None
             if wert < float(anfang):
-                # Die Statistik wurde gelöscht oder neu aufgebaut: Der
-                # gemerkte Bezugspunkt stammt aus der alten Reihe und ist
-                # damit wertlos. Neu holen (der Stundentakt von YEAR_RETRY
-                # bleibt, damit das nicht zur Endlosschleife wird).
                 _LOGGER.warning(
-                    "Statistiksumme von %s liegt unter dem Stand zum "
-                    "Jahresanfang (%.1f < %.1f); Bezugspunkt wird neu gelesen",
-                    entity_id, wert, float(anfang),
+                    "Statistiksumme von %s liegt unter dem Stand zum %s "
+                    "(%.1f < %.1f); Bezugspunkt wird neu gelesen",
+                    entity_id, wann, wert, float(anfang),
                 )
-                self._year_for = None
                 return None
             liter += (wert - float(anfang)) * self._liter_factor(entity_id)
+        return liter
+
+    # ------------------------------------------------------------- Heute
+
+    @staticmethod
+    def day_start() -> datetime:
+        """Mitternacht in Ortszeit, als UTC-Zeitpunkt."""
+        return dt_util.as_utc(dt_util.start_of_local_day())
+
+    async def _async_day_start_sums(self) -> dict[str, float] | None:
+        """Statistiksummen um Mitternacht – Bezugspunkt für den Tag.
+
+        Wie beim Jahr: einmal gelesen, dann ist der Tagesverbrauch eine
+        Subtraktion von der Summe, die ohnehin gelesen wird. Das kostet eine
+        Abfrage am Tag. Gelesen wird die Fünfminutenstatistik, weil die
+        Stundenzeile bis Mitternacht erst eine Stunde später fertig wäre.
+        """
+        heute = dt_util.now().date()
+        if self._day_for == heute:
+            return self._day_sums
+
+        jetzt = dt_util.utcnow()
+        mitternacht = self.day_start()
+        if jetzt < mitternacht + DAY_SETTLE:
+            return None
+        if self._day_try and (jetzt - self._day_try) < DAY_RETRY:
+            return None
+        self._day_try = jetzt
+
+        recorder = get_instance(self.hass)
+        zeilen = await recorder.async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            mitternacht - timedelta(hours=6),
+            jetzt,
+            set(self.sources),
+            "5minute",
+            None,
+            {"sum"},
+        )
+        ziel = mitternacht.timestamp()
+        summen: dict[str, float] = {}
+        for entity_id, reihe in zeilen.items():
+            if (wert := stand_um(reihe, ziel)) is not None:
+                summen[entity_id] = wert
+
+        fehlend = [eid for eid in self.sources if eid not in summen]
+        if fehlend:
+            _LOGGER.debug(
+                "Kein Statistikstand zu Mitternacht für %s; der "
+                "Tagesverbrauch bleibt vorerst unbekannt", fehlend,
+            )
+            return None
+
+        self._day_sums = summen
+        self._day_for = heute
+        return summen
+
+    def _day_liters(
+        self, summen: dict[str, float], tagesanfang: dict[str, float] | None
+    ) -> float | None:
+        """Verbrauch seit Mitternacht in Litern."""
+        liter = self._liters_since(summen, tagesanfang, "Tagesbeginn")
+        if liter is None and tagesanfang is not None:
+            self._day_for = None
         return liter
 
     @property
@@ -925,6 +1018,7 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
         stand = min(max(referenz - verbrauch_liter, 0.0), self.usable_capacity)
 
         jahr_liter = self._year_liters(summen, await self._async_year_start_sums())
+        tag_liter = self._day_liters(summen, await self._async_day_start_sums())
 
         # Das Monatsprofil ist die teure Abfrage: mehrere Jahre Statistik über
         # alle Quellen. Sie läuft deshalb nie im Aktualisierungspfad, sondern
@@ -974,6 +1068,8 @@ class TankCoordinator(DataUpdateCoordinator[TankState]):
                 if self._profile_vergleich
                 and self._profile_vergleich.measured_months else None
             ),
+            day_liters=round(tag_liter, 2) if tag_liter is not None else None,
+            day_start=self.day_start(),
         )
 
     def _profil_anfordern(self) -> None:

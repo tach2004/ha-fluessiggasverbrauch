@@ -530,3 +530,49 @@ if __name__ == "__main__":
                 print(f"  FEHLER {name}: {e}")
     print("\nAlle Tests bestanden." if not fehler else f"\n{fehler} Test(s) fehlgeschlagen.")
     sys.exit(1 if fehler else 0)
+
+
+def test_heute_ist_ein_attribut_und_keine_eigene_entitaet():
+    """Der Tageswert hängt am Tagesverbrauch – die Gaszähler der Heizung
+    führen den Tagesverlauf ohnehin, drei weitere Entitäten wären doppelt."""
+    sensor = _quelltext("sensor.py")
+    for schluessel in ("heute_liter", "heute_kubik", "heute_energie"):
+        assert f'key="{schluessel}"' not in sensor, schluessel
+    anfang = sensor.index('key="tagesverbrauch"')
+    block = sensor[anfang:]
+    block = block[: block.index("TankSensorDescription(", 10)]
+    assert '"heute_liter": round(s.day_liters, 2)' in block
+
+    # Die Karte braucht für die Umrechnung den kWh-Wert am Faktor-Sensor
+    assert '"kwh_pro_liter": round(c.kwh_per_liter, 2)' in sensor
+
+
+def test_tagesbezugspunkt_kostet_eine_abfrage_am_tag():
+    koordinator = _quelltext("coordinator.py")
+    pfad = koordinator[koordinator.index("async def _async_day_start_sums"):]
+    pfad = pfad[: pfad.index("    def _day_liters")]
+    assert "if self._day_for == heute:" in pfad      # einmal am Tag, dann gemerkt
+    assert "DAY_RETRY" in pfad                       # Fehlversuch nicht bei jedem Lauf
+    assert "DAY_SETTLE" in pfad                      # Mitternachtszeile abwarten
+    # Fünfminutenstatistik: die Stundenzeile bis Mitternacht käme zu spät
+    assert '"5minute"' in pfad
+    assert "stand_um(" in pfad                       # die einzeln getestete Auswahl
+    # Mitternacht in Ortszeit, nicht UTC
+    assert "dt_util.start_of_local_day()" in koordinator
+
+
+def test_karte_zeigt_heute_ueber_dem_jahr():
+    karte = (INTEGRATION / "frontend" / "lpg-tank-card.js").read_text(encoding="utf-8")
+    code = re.sub(r"//[^\n]*|/\*.*?\*/", "", karte, flags=re.S)
+    assert karte.index('id="heuteblock"') < karte.index('id="jahrblock"')
+    assert "this._heuteZeichnen();" in code
+    assert "heute: true," in code                    # abschaltbar wie der Jahresblock
+
+    funktion = code[code.index("_heuteZeichnen() {"):]
+    funktion = funktion[: funktion.index("\n  }\n")]
+    assert ".heute_liter" in funktion
+    # m³ und kWh mit dem gerade gültigen Faktor, nicht mit festen Zahlen
+    assert '_zustand("umrechnungsfaktor")' in funktion
+    assert "liter / faktor" in funktion
+    assert "kwh_pro_liter" in funktion
+    assert "3.92" not in funktion and "3,92" not in funktion

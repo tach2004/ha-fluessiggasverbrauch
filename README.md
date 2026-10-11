@@ -62,6 +62,7 @@ type: custom:lpg-tank-card
 tank: Gartenhaus       # nur nötig, wenn mehrere Tanks eingerichtet sind
 verlauf: true          # Restverlauf der kommenden Monate
 preisverlauf: true     # Preisentwicklung der eingetragenen Lieferungen
+heute: true            # Verbrauch seit Mitternacht in L, m³ und kWh
 jahr: true             # Verbrauch des laufenden Jahres in L, m³ und kWh
 betankung: true        # Betankungsformular
 wellen: true           # Wellenanimation
@@ -104,7 +105,8 @@ Verbrauch seit der Betankung, **Reserve erreicht**, voraussichtlich leer und
 Bestellfrist. Beim Ø Verbrauch steht der erwartete Jahresverbrauch in Litern
 *und* Kubikmetern.
 
-Darunter der **Verbrauch des laufenden Kalenderjahres** in Litern, m³ und kWh –
+Darunter der **Verbrauch heute** – seit Mitternacht, in Litern, m³ und kWh, daneben
+zum Einordnen der Ø Verbrauch pro Tag. Dann der **Verbrauch des laufenden Kalenderjahres** in Litern, m³ und kWh –
 drei anklickbare Felder, hinter jedem steckt eine eigene Entität mit
 Langzeitstatistik. Daneben, was das letzte Jahr bis heute verbraucht hätte (aus dessen Monatswerten, der laufende Monat anteilig):
 `erwartet bis heute 1.180 L (+6 %)`. Bewusst keine Prozentangabe „vom Jahr" –
@@ -130,7 +132,7 @@ Je Tank entsteht ein Gerät mit 18 Sensoren:
 | Gaspreis | EUR/L, mit Langzeitstatistik – daraus wird der Preisverlauf |
 | Umrechnungsfaktor | L/m³, der gerade gültige Wert – siehe unten |
 | Verbrauch seit Betankung | Liter seit dem letzten Bezugspunkt |
-| Tagesverbrauch | Ø Liter pro Tag |
+| Tagesverbrauch | Ø Liter pro Tag, Attribut `heute_liter` mit dem Verbrauch seit Mitternacht |
 | Verbrauch dieses Jahr | Liter im laufenden Kalenderjahr – siehe unten |
 | Verbrauch dieses Jahr (m³) | dasselbe in Kubikmetern |
 | Verbrauch dieses Jahr (kWh) | dasselbe in Kilowattstunden |
@@ -164,6 +166,20 @@ Attribute am Liter-Sensor:
 Die drei Sensoren tragen `state_class: total` und melden den 1. Januar als
 `last_reset`. Home Assistant muss den Jahreswechsel damit nicht aus einem
 Rückgang erraten – siehe [KONZEPT](docs/KONZEPT.md#jahreszähler-die-auf-0-zurückfallen).
+
+### Verbrauch heute
+
+Keine eigene Entität: Die Liter seit Mitternacht stehen als Attribut
+`heute_liter` am Sensor *Tagesverbrauch*. m³ und kWh rechnet die Karte daraus
+mit dem gerade gültigen Umrechnungsfaktor und dem Energieinhalt je Liter – nach
+einer Betankung mit Nachkalibrierung gilt also sofort der neue Faktor. Den
+Tagesverlauf selbst führen ohnehin schon die Gaszähler deiner Heizung.
+
+Gerechnet wird wie beim Jahr als Differenz zur Statistiksumme um 00:00 Uhr
+Ortszeit; das kostet **eine Datenbankabfrage am Tag**. Der Bezugspunkt kommt
+aus der Fünfminutenstatistik – die Stundenzeile bis Mitternacht wäre erst eine
+Stunde später fertig. In den ersten gut zehn Minuten nach Mitternacht ist der
+Block auf der Karte deshalb kurz ausgeblendet; danach geht es bei 0 los.
 
 ### Umrechnungsfaktor
 

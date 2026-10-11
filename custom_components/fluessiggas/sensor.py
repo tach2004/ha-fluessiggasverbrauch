@@ -140,6 +140,14 @@ SENSOREN: tuple[TankSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
         value_fn=lambda s, c: s.per_day,
+        # Der Verbrauch seit Mitternacht steht bewusst nur hier als Attribut
+        # und nicht als eigene Entität: Die Gaszähler der Heizung führen den
+        # Tagesverlauf ohnehin. m³ und kWh rechnet die Karte mit dem gerade
+        # gültigen Umrechnungsfaktor um.
+        attrs_fn=lambda s, c: {
+            "heute_liter": round(s.day_liters, 2) if s.day_liters is not None else None,
+            "heute_seit": dt_util.as_local(s.day_start).isoformat() if s.day_start else None,
+        },
     ),
     # Die drei Jahreswerte sind dieselbe Menge in drei Einheiten. Bewusst als
     # eigene Entitäten und nicht als Attribute: Nur so führt Home Assistant

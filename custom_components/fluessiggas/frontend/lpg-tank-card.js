@@ -47,6 +47,7 @@ const DEFAULTS = {
   betankung: true,    // Betankungsformular anbieten
   verlauf: true,      // Restverlauf der kommenden Monate zeichnen
   preisverlauf: true, // Preisentwicklung der eingetragenen Lieferungen
+  heute: true,        // Verbrauch seit Mitternacht in drei Einheiten
   jahr: true,         // Verbrauch des laufenden Kalenderjahres in drei Einheiten
   wellen: true,       // Wellenanimation
 };
@@ -444,6 +445,14 @@ class LpgTankCard extends HTMLElement {
         <svg id="verlauf" viewBox="0 0 420 96" role="img" aria-label="Restverlauf"></svg>
         <div class="kacheln" id="kacheln"></div>
 
+        <div id="heuteblock" hidden>
+          <div class="abschnitt">
+            <span>Verbrauch heute</span>
+            <span id="heute-zusatz"></span>
+          </div>
+          <div class="jahr" id="heute"></div>
+        </div>
+
         <div id="jahrblock" hidden>
           <div class="abschnitt">
             <span id="jahr-titel">Verbrauch</span>
@@ -545,6 +554,7 @@ class LpgTankCard extends HTMLElement {
     ["titel", "fehler", "grafik", "liquid", "w1", "w2", "t-prozent", "t-liter", "verlauf",
      "marke-max", "marke-max-text", "marke-reserve", "marke-reserve-text",
      "kacheln", "fuss", "formular", "knopf-form", "preisblock", "preise", "preis-spanne",
+     "heuteblock", "heute", "heute-zusatz",
      "jahrblock", "jahr", "jahr-titel", "jahr-zusatz",
      "m-liefermenge", "m-tankuhr", "m-nachtragen", "m-verlauf",
      "block-liefermenge", "block-tankuhr", "block-nachtragen", "block-verlauf",
@@ -887,6 +897,7 @@ class LpgTankCard extends HTMLElement {
     ];
 
     this._kachelnZeichnen(e.kacheln, kacheln);
+    this._heuteZeichnen();
     this._jahrZeichnen();
 
     // ---------------------------------------------------------- Fußzeile
@@ -947,6 +958,43 @@ class LpgTankCard extends HTMLElement {
     // Liter daneben, und das fällt beim Vergleich mit der Literzahl auf.
     return `erw. ${this._fmt(liter, 0, "L")}` +
       (kubik != null ? ` · ${this._fmt(kubik, 1, "m³")}` : "") + "/Jahr";
+  }
+
+  /**
+   * Verbrauch seit Mitternacht in Liter, m³ und kWh - aufgebaut wie der
+   * Jahresblock darunter. Bewusst ohne eigene Entitäten: Die Liter stehen
+   * als Attribut am Tagesverbrauch, m³ und kWh sind reine Umrechnung.
+   */
+  _heuteZeichnen() {
+    const e = this._el;
+    if (!e.heuteblock) return;
+    const schnitt = this._zustand("tagesverbrauch");
+    const liter = ((schnitt || {}).attributes || {}).heute_liter;
+    if (!this._config.heute || liter === null || liter === undefined || isNaN(liter)) {
+      e.heuteblock.hidden = true; return;
+    }
+    e.heuteblock.hidden = false;
+
+    // Gegenüberstellung mit dem Durchschnitt seit der Betankung: Ein Tag
+    // allein sagt wenig, ob er viel oder wenig war, schon.
+    const proTag = zahl(schnitt, null);
+    e["heute-zusatz"].textContent = proTag !== null
+      ? `Ø ${this._fmt(proTag, 1, "L")} pro Tag` : "";
+
+    // Umgerechnet mit dem gerade gültigen Faktor - derselbe, mit dem die
+    // Integration aus den m³ der Heizung Liter macht. Nach einer Betankung
+    // mit Nachkalibrierung gilt also sofort der neue Wert.
+    const faktorZ = this._zustand("umrechnungsfaktor");
+    const faktor = zahl(faktorZ, null);
+    const kwhJeLiter = ((faktorZ || {}).attributes || {}).kwh_pro_liter;
+    this._kachelnZeichnen(e.heute, [
+      { label: "Liter", wert: this._fmt(liter, 1, "L"),
+        zusatz: null, kennung: "tagesverbrauch" },
+      { label: "Kubik", wert: this._fmt(faktor ? liter / faktor : null, 2, "m³"),
+        zusatz: null, kennung: "tagesverbrauch" },
+      { label: "Energie", wert: this._fmt(kwhJeLiter != null ? liter * kwhJeLiter : null, 1, "kWh"),
+        zusatz: null, kennung: "tagesverbrauch" },
+    ]);
   }
 
   /**
