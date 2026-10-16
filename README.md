@@ -96,6 +96,15 @@ Reserve erreicht ist, **gelb** unterhalb der einstellbaren *Warnschwelle*
 (Vorgabe 30 % der Tankuhr). Rot hat bewusst keine eigene Einstellung – sonst
 könnten Farbe und Bestellfrist auseinanderlaufen.
 
+Auch der **Restverlauf** unter dem Tank hat ein Fadenkreuz, hier stufenlos:
+Es folgt Maus oder Finger und zeigt für jeden Tag bis zum Leerlaufen Datum,
+Liter, Tankuhr-Prozent und Energie – unter der Reserve in Rot, am
+angekündigten Tag „leer". Zwischen den Monaten wird so gelesen, wie die
+Prognose rechnet: mit gleichmäßigem Verbrauch innerhalb eines Monats. Die
+Kurve beginnt heute beim aktuellen Stand und endet am Tag, an dem der Tank leer
+ist. Auf dem Handy führt waagerechtes Ziehen das Fadenkreuz, senkrechtes
+Wischen scrollt weiter die Seite.
+
 Im Preisdiagramm trägt jede Betankung ihr Datum an der Achse, und ein Zeiger
 darüber – Maus oder Finger – blendet ein Fadenkreuz mit Datum, Preis und
 Liefermenge ein, wie in den Verlaufsdiagrammen von Home Assistant.
