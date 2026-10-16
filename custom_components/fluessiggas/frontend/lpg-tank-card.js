@@ -76,6 +76,63 @@ function fuellhoehe(f) {
 
 /* --------------------------------------------------------------- Helfer */
 
+/**
+ * Restverlauf als Zeitreihe: heute mit dem aktuellen Stand, danach der Rest
+ * aus der Prognose an jedem Monatsende.
+ *
+ * Die Integration rechnet innerhalb eines Monats mit gleichmäßigem Verbrauch
+ * (Monatsmenge / Tage, siehe forecast.simulate). Zwischen zwei Punkten ist
+ * der Verlauf also tatsächlich eine Gerade - das Fadenkreuz darf linear
+ * dazwischen lesen, ohne etwas dazuzuerfinden.
+ *
+ * @param {Array<{monat: string, rest: number}>} monate Attribut "monate"
+ * @param {number} stand   Liter heute
+ * @param {Date} heute     Mitternacht des heutigen Tages, Ortszeit
+ * @param {Date|null} leerAm vorausgesagter Tag, an dem der Tank leer ist
+ * @returns {Array<{t: number, rest: number}>}
+ */
+function restVerlauf(monate, stand, heute, leerAm) {
+  const reihe = [{ t: heute.getTime(), rest: Math.max(Number(stand) || 0, 0) }];
+  // Das Leerdatum kommt als Mittag; das Fadenkreuz liest ganze Tage ab 0 Uhr.
+  // Auf den Tagesbeginn gelegt, steht am angekündigten Tag auch "leer".
+  if (leerAm) leerAm = new Date(leerAm.getFullYear(), leerAm.getMonth(), leerAm.getDate());
+  for (const m of monate) {
+    const [j, mo] = String(m.monat || "").split("-").map(Number);
+    if (!j || !mo) continue;
+    // Monatsende = Mitternacht am Ersten des Folgemonats (Monat mo ist in
+    // Date bereits der nächste; den Dezember rechnet Date ins neue Jahr).
+    let t = new Date(j, mo, 1).getTime();
+    const rest = Math.max(Number(m.rest) || 0, 0);
+    const davor = reihe[reihe.length - 1].t;
+    // Leer wird der Tank mitten im Monat - dort endet die Kurve, nicht am
+    // Monatsende. Sonst zeigte das Fadenkreuz "leer" schon Wochen zu früh.
+    if (rest <= 0 && leerAm && leerAm.getTime() > davor && leerAm.getTime() < t) {
+      t = leerAm.getTime();
+    }
+    if (t <= davor) continue;
+    reihe.push({ t, rest });
+    if (rest <= 0) break;
+  }
+  return reihe;
+}
+
+/**
+ * Rest zum Zeitpunkt t: linear zwischen den Punkten, außerhalb der Reihe der
+ * erste bzw. letzte Wert.
+ * @param {Array<{t: number, rest: number}>} reihe
+ * @param {number} t
+ * @returns {number|null}
+ */
+function restAm(reihe, t) {
+  if (!reihe.length) return null;
+  if (t <= reihe[0].t) return reihe[0].rest;
+  for (let i = 1; i < reihe.length; i++) {
+    const a = reihe[i - 1], b = reihe[i];
+    if (t <= b.t) return a.rest + ((b.rest - a.rest) * (t - a.t)) / (b.t - a.t);
+  }
+  return reihe[reihe.length - 1].rest;
+}
+
 const NICHTS = ["unknown", "unavailable", "none", "None", "", null, undefined];
 
 function istWert(s) {
@@ -252,7 +309,10 @@ class LpgTankCard extends HTMLElement {
           text-align: center; font-size: .95rem; color: var(--secondary-text-color);
           margin-top: -4px;
         }
-        #verlauf { margin: 0 -4px; }
+        /* pan-y: Senkrecht wischen scrollt weiter die Seite, waagerecht
+           ziehen führt das Fadenkreuz. Das Diagramm sitzt mitten in der
+           Karte - auf dem Handy darf es das Scrollen nicht abfangen. */
+        #verlauf { margin: 0 -4px; touch-action: pan-y; }
         #verlauf[hidden] { display: none; }
         .v-flaeche { fill: var(--lpg-farbe, var(--lpg-gut)); opacity: .18; }
         .v-linie { fill: none; stroke: var(--lpg-farbe, var(--lpg-gut)); stroke-width: 2.5;
@@ -261,6 +321,10 @@ class LpgTankCard extends HTMLElement {
         .v-achse { stroke: var(--divider-color); stroke-width: 1; }
         .v-text { fill: var(--secondary-text-color); font-size: 10px; }
         .v-punkt { fill: var(--lpg-alarm); }
+        .v-treffer { fill: var(--lpg-farbe, var(--lpg-gut));
+                     stroke: var(--card-background-color); stroke-width: 2; }
+        /* Doppelte Klasse: .p-wert steht weiter unten und gewönne sonst */
+        .p-wert.v-unter, .v-treffer.v-unter { fill: var(--lpg-alarm); }
 
         .abschnitt {
           display: flex; justify-content: space-between; align-items: baseline;
@@ -623,6 +687,13 @@ class LpgTankCard extends HTMLElement {
       ["pointerleave", "pointercancel"].forEach((typ) =>
         e.preise.addEventListener(typ, () => this._preisMarkerAus()));
     }
+    // Dasselbe für den Restverlauf - dort stufenlos statt am Datenpunkt
+    if (e.verlauf) {
+      ["pointerdown", "pointermove"].forEach((typ) =>
+        e.verlauf.addEventListener(typ, (ev) => this._verlaufMarker(ev)));
+      ["pointerleave", "pointercancel"].forEach((typ) =>
+        e.verlauf.addEventListener(typ, () => this._verlaufMarkerAus()));
+    }
   }
 
   /* ------------------------------------------------------------ Aktionen */
@@ -861,7 +932,7 @@ class LpgTankCard extends HTMLElement {
       `${this._fmt(liter, 0)} von ${this._fmt(nutzbar, 0)} L` +
       (energie !== null ? ` · ${this._fmt(energie, 0)} kWh` : "");
 
-    this._verlaufZeichnen(reserve, nenn);
+    this._verlaufZeichnen(reserve, nenn, liter);
 
     // ---------------------------------------------------------- Kacheln
     const leerAm = this._datum("leer_am");
@@ -1051,60 +1122,133 @@ class LpgTankCard extends HTMLElement {
    * Restverlauf der kommenden Monate aus dem Attribut "monate" der
    * Prognose-Entität. Zeigt auf einen Blick, wie weit die Füllung trägt
    * und wo sie durch die Reserve läuft.
+   *
+   * Die Achse ist eine echte Zeitachse: links heute mit dem aktuellen Stand,
+   * rechts der Tag, an dem der Tank leer ist (oder das Ende der Prognose).
    */
-  _verlaufZeichnen(reserve, nenn) {
+  _verlaufZeichnen(reserve, nenn, stand) {
     const svg = this._el.verlauf;
     if (!svg) return;
     const c = this._config;
     const prog = this._zustand("reichweite");
     const monate = (prog && prog.attributes && prog.attributes.monate) || [];
-    if (!c.verlauf || monate.length < 2) { svg.hidden = true; return; }
+    const jetzt = new Date();
+    const heute = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate());
+    const reihe = restVerlauf(monate.slice(0, 36), stand, heute, this._datum("leer_am"));
+    if (!c.verlauf || reihe.length < 3) {
+      svg.hidden = true;
+      this._verlaufDaten = null;
+      return;
+    }
     svg.hidden = false;
 
-    const punkte = monate.slice(0, 36);
     const B = 420, H = 96, l = 6, r = 6, o = 8, u = 20;
-    const maxRest = Math.max(...punkte.map((m) => m.rest), nenn * 0.1);
-    const x = (i) => l + (i / (punkte.length - 1)) * (B - l - r);
+    const t0 = reihe[0].t, t1 = reihe[reihe.length - 1].t;
+    const maxRest = Math.max(...reihe.map((p) => p.rest), nenn * 0.1);
+    const x = (t) => l + ((t - t0) / Math.max(t1 - t0, 1)) * (B - l - r);
     const y = (v) => o + (1 - v / maxRest) * (H - o - u);
 
-    const linie = punkte.map((m, i) => `${i ? "L" : "M"} ${x(i).toFixed(1)},${y(m.rest).toFixed(1)}`).join(" ");
-    const flaeche = `${linie} L ${x(punkte.length - 1).toFixed(1)},${y(0).toFixed(1)} L ${x(0).toFixed(1)},${y(0).toFixed(1)} Z`;
+    const linie = reihe.map((p, i) => `${i ? "L" : "M"} ${x(p.t).toFixed(1)},${y(p.rest).toFixed(1)}`).join(" ");
+    const flaeche = `${linie} L ${x(t1).toFixed(1)},${y(0).toFixed(1)} L ${x(t0).toFixed(1)},${y(0).toFixed(1)} Z`;
 
-    // Beschriftung: jeder Jahreswechsel plus Anfang und Ende
+    // Beschriftung an den Monatsanfängen, etwa sieben über die Breite; der
+    // laufende Monat steht links am Rand. Das Jahr nur, wenn es wechselt.
     const lang = (this._hass.locale && this._hass.locale.language) || "de";
-    const schritt = Math.max(1, Math.ceil(punkte.length / 7));
-    let letztesJahr = null;
-    const letzter = punkte.length - 1;
-    const vorletzterTick = Math.floor(letzter / schritt) * schritt;
-    const labels = punkte
-      .map((m, i) => ({ m, i }))
-      // letzten Monat nur beschriften, wenn er nicht am vorherigen Tick klebt
-      .filter(({ i }) => i % schritt === 0 || (i === letzter && x(letzter) - x(vorletzterTick) > 46))
-      .map(({ m, i }) => {
-        const [j, mo] = m.monat.split("-");
-        const d = new Date(Number(j), Number(mo) - 1, 1);
-        const text = d.toLocaleDateString(lang, { month: "short" }) +
-          (j !== letztesJahr ? ` ${j.slice(2)}` : "");
-        letztesJahr = j;
-        return `<text class="v-text" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${
-          i === 0 ? "start" : i >= letzter - 1 ? "end" : "middle"}">${text}</text>`;
-      })
-      .join("");
+    const anzahl = reihe.length - 1;
+    const schritt = Math.max(1, Math.ceil(anzahl / 7));
+    let letztesJahr = null, letztesX = -999;
+    const labels = [];
+    for (let i = 0; i < anzahl; i += schritt) {
+      const anfang = i === 0 ? heute : new Date(reihe[i].t);
+      const px = i === 0 ? l : x(reihe[i].t);
+      const rechts = px > B - r - 22;
+      if (px - letztesX < 40 || (rechts && px - letztesX < 52)) continue;
+      const j = anfang.getFullYear();
+      const text = anfang.toLocaleDateString(lang, { month: "short" }) +
+        (j !== letztesJahr ? ` ${String(j).slice(2)}` : "");
+      letztesJahr = j;
+      letztesX = px;
+      labels.push(`<text class="v-text" x="${px.toFixed(1)}" y="${H - 6}" text-anchor="${
+        i === 0 ? "start" : rechts ? "end" : "middle"}">${text}</text>`);
+    }
 
     const reserveLinie = reserve > 0 && reserve < maxRest
       ? `<line class="v-reserve" x1="${l}" y1="${y(reserve).toFixed(1)}" x2="${B - r}" y2="${y(reserve).toFixed(1)}"/>
          <text class="v-text" x="${l}" y="${(y(reserve) - 4).toFixed(1)}">Reserve</text>`
       : "";
 
-    const leer = punkte[punkte.length - 1].rest <= 0
-      ? `<circle class="v-punkt" cx="${x(punkte.length - 1).toFixed(1)}" cy="${y(0).toFixed(1)}" r="3.5"/>`
+    const leer = reihe[reihe.length - 1].rest <= 0
+      ? `<circle class="v-punkt" cx="${x(t1).toFixed(1)}" cy="${y(0).toFixed(1)}" r="3.5"/>`
       : "";
 
     svg.innerHTML = `
       <line class="v-achse" x1="${l}" y1="${y(0).toFixed(1)}" x2="${B - r}" y2="${y(0).toFixed(1)}"/>
       <path class="v-flaeche" d="${flaeche}"/>
       <path class="v-linie" d="${linie}"/>
-      ${reserveLinie}${leer}${labels}`;
+      ${reserveLinie}${leer}${labels.join("")}
+      <g id="v-marker"></g>
+      <rect x="0" y="0" width="${B}" height="${H}" fill="transparent" style="cursor:crosshair"/>`;
+
+    // Für das Fadenkreuz: Skalen und Reihe merken
+    this._verlaufDaten = { reihe, x, y, B, H, l, r, o, u, t0, t1, nenn, reserve };
+  }
+
+  /**
+   * Fadenkreuz im Restverlauf, stufenlos: Die Linie folgt dem Finger bzw.
+   * der Maus, der Wert dazu wird zwischen den Monatspunkten gelesen - so,
+   * wie die Prognose ihn rechnet. Angezeigt werden Datum, Liter, Tankuhr-
+   * Prozent und Energie; unter der Reserve in Rot.
+   */
+  _verlaufMarker(ev) {
+    const d = this._verlaufDaten;
+    const svg = this._el.verlauf;
+    if (!d || !svg) return;
+    const marker = svg.querySelector("#v-marker");
+    if (!marker) return;
+    const kasten = svg.getBoundingClientRect();
+    if (!kasten.width) return;
+
+    const ux = ((ev.clientX - kasten.left) / kasten.width) * d.B;
+    const anteil = Math.min(Math.max((ux - d.l) / (d.B - d.l - d.r), 0), 1);
+    // Auf den Tag gerundet - angezeigt wird ja ein Datum, und der Wert soll
+    // zu genau diesem Datum gehören.
+    const roh = new Date(d.t0 + anteil * (d.t1 - d.t0));
+    const tag = new Date(roh.getFullYear(), roh.getMonth(), roh.getDate() + (roh.getHours() >= 12 ? 1 : 0));
+    const t = Math.min(Math.max(tag.getTime(), d.t0), d.t1);
+    const rest = restAm(d.reihe, t);
+    if (rest === null) return;
+
+    const px = d.x(t), py = d.y(rest);
+    const kwh = ((this._zustand("umrechnungsfaktor") || {}).attributes || {}).kwh_pro_liter;
+    // Tage ab heute 0 Uhr zählen, nicht ab jetzt: Sonst stünde am Nachmittag
+    // beim heutigen Tag "vorbei". round fängt die 23/25-Stunden-Tage der
+    // Zeitumstellung ab.
+    const tage = Math.round((t - d.t0) / 86400000);
+    const zeile1 = `${this._datumText(new Date(t))} · ${
+      tage === 0 ? "heute" : tage === 1 ? "morgen" : `in ${tage} Tagen`}`;
+    const zeile2 = rest <= 0 ? "leer"
+      : `${this._fmt(rest, 0, "L")} · ${this._fmt((rest / Math.max(d.nenn, 1)) * 100, 1, "%")}` +
+        (kwh != null ? ` · ${this._fmt(rest * kwh, 0, "kWh")}` : "");
+    const unter = d.reserve > 0 && rest <= d.reserve;
+
+    const breite = Math.max(zeile1.length, zeile2.length) * 5.6 + 14;
+    const bx = Math.min(
+      Math.max(px + breite + 8 > d.B - d.r ? px - breite - 6 : px + 6, 2),
+      d.B - breite - 2,
+    );
+
+    marker.innerHTML = `
+      <line class="p-kreuz" x1="${px.toFixed(1)}" y1="${d.o}" x2="${px.toFixed(1)}" y2="${(d.H - d.u).toFixed(1)}"/>
+      <circle class="v-treffer${unter ? " v-unter" : ""}" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="4.5"/>
+      <rect class="p-box" x="${bx.toFixed(1)}" y="2" width="${breite.toFixed(1)}" height="32" rx="5"/>
+      <text class="p-boxtext" x="${(bx + 6).toFixed(1)}" y="15">${zeile1}</text>
+      <text class="p-wert${unter ? " v-unter" : ""}" x="${(bx + 6).toFixed(1)}" y="29">${zeile2}</text>`;
+  }
+
+  _verlaufMarkerAus() {
+    const svg = this._el.verlauf;
+    const marker = svg && svg.querySelector("#v-marker");
+    if (marker) marker.innerHTML = "";
   }
 
   /**
