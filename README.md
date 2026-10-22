@@ -1,5 +1,6 @@
 # Flüssiggastank für Home Assistant
 
+bdkdjxjfbf
 Eine Integration, die aus dem Gasverbrauch deiner Heizung den Füllstand eines
 Flüssiggastanks fortschreibt – mit saisonaler Prognose, wann er leer ist, und
 einer grafischen Karte fürs Dashboard.
